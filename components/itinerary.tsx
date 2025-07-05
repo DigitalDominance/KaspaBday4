@@ -399,9 +399,9 @@ export function Itinerary() {
                 {/* Details */}
                 <div className="space-y-4">
                   <div className="text-center">
-                    <Badge className="bg-gradient-to-r from-cyan-400/20 to-blue-400/20 text-cyan-300 border-cyan-400/30 text-sm md:text-base px-4 py-2 hover:bg-gradient-to-r hover:from-cyan-400/20 hover:to-blue-400/20 hover:text-cyan-300 hover:border-cyan-400/30">
+                    <div className="inline-flex items-center rounded-full border border-cyan-400/30 bg-gradient-to-r from-cyan-400/20 to-blue-400/20 px-4 py-2 text-sm md:text-base font-medium text-cyan-300">
                       FREE ENTRY FOR NFT HOLDERS
-                    </Badge>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm md:text-base">

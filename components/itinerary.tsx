@@ -3,7 +3,7 @@
 import { motion } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Calendar, Clock, Code, Zap, Gift, Users, Lock } from "lucide-react"
+import { Calendar, Clock, Code, Zap, Gift, Users, Lock, Crown, Sparkles } from "lucide-react"
 import { ElegantShape } from "@/components/ui/elegant-shape"
 
 const containerVariants = {
@@ -271,6 +271,195 @@ export function Itinerary() {
               </Card>
             </motion.div>
           ))}
+
+          {/* KASPER NFT Exclusive Raffle Card */}
+          <motion.div variants={itemVariants}>
+            <Card className="relative overflow-hidden bg-gradient-to-br from-cyan-400/10 via-blue-400/10 to-cyan-300/10 border-2 border-cyan-400/30">
+              {/* Animated background effects */}
+              <div className="absolute inset-0 overflow-hidden">
+                <motion.div
+                  className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-cyan-400/20 to-blue-400/20 rounded-full blur-3xl"
+                  animate={{
+                    scale: [1, 1.2, 1],
+                    opacity: [0.3, 0.6, 0.3],
+                  }}
+                  transition={{
+                    duration: 4,
+                    repeat: Number.POSITIVE_INFINITY,
+                    ease: "easeInOut",
+                  }}
+                />
+                <motion.div
+                  className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-blue-400/20 to-cyan-400/20 rounded-full blur-3xl"
+                  animate={{
+                    scale: [1.2, 1, 1.2],
+                    opacity: [0.4, 0.2, 0.4],
+                  }}
+                  transition={{
+                    duration: 3,
+                    repeat: Number.POSITIVE_INFINITY,
+                    ease: "easeInOut",
+                    delay: 1,
+                  }}
+                />
+              </div>
+
+              <CardHeader className="relative z-10">
+                <div className="flex items-center gap-3 mb-4">
+                  <motion.div
+                    animate={{
+                      rotate: [0, 360],
+                    }}
+                    transition={{
+                      duration: 8,
+                      repeat: Number.POSITIVE_INFINITY,
+                      ease: "linear",
+                    }}
+                  >
+                    <Crown className="h-8 w-8 text-cyan-400" />
+                  </motion.div>
+                  <div>
+                    <CardTitle className="text-2xl md:text-3xl font-space-grotesk bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400">
+                      KASPER NFT Holders
+                    </CardTitle>
+                    <CardDescription className="text-lg text-cyan-300/80">
+                      Exclusive Daily Raffle - All 3 Days
+                    </CardDescription>
+                  </div>
+                </div>
+
+                {/* Prize amount with sparkle effects */}
+                <div className="flex items-center justify-center gap-2 mb-6">
+                  <motion.div
+                    animate={{
+                      scale: [1, 1.1, 1],
+                      rotate: [0, 180, 360],
+                    }}
+                    transition={{
+                      duration: 2,
+                      repeat: Number.POSITIVE_INFINITY,
+                      ease: "easeInOut",
+                    }}
+                  >
+                    <Sparkles className="h-6 w-6 bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400" />
+                  </motion.div>
+                  <span className="text-3xl md:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400">
+                    Up to $500 Daily
+                  </span>
+                  <motion.div
+                    animate={{
+                      scale: [1.1, 1, 1.1],
+                      rotate: [360, 180, 0],
+                    }}
+                    transition={{
+                      duration: 2,
+                      repeat: Number.POSITIVE_INFINITY,
+                      ease: "easeInOut",
+                      delay: 1,
+                    }}
+                  >
+                    <Sparkles className="h-6 w-6 bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400" />
+                  </motion.div>
+                </div>
+              </CardHeader>
+
+              <CardContent className="relative z-10">
+                {/* NFT Showcase */}
+                <div className="flex justify-center gap-4 mb-6">
+                  {[
+                    { src: "/kasper-nft-1.png", delay: 0 },
+                    { src: "/kasper-nft-2.png", delay: 0.2 },
+                    { src: "/kasper-nft-3.png", delay: 0.4 },
+                  ].map((nft, index) => (
+                    <motion.div
+                      key={index}
+                      className="relative"
+                      animate={{
+                        y: [0, -10, 0],
+                      }}
+                      transition={{
+                        duration: 3,
+                        repeat: Number.POSITIVE_INFINITY,
+                        ease: "easeInOut",
+                        delay: nft.delay,
+                      }}
+                    >
+                      <div className="w-16 h-16 md:w-20 md:h-20 rounded-xl overflow-hidden border-2 border-cyan-400/50 bg-gradient-to-br from-cyan-400/20 to-blue-400/20 backdrop-blur-sm">
+                        <img
+                          src={nft.src || "/placeholder.svg"}
+                          alt={`KASPER NFT ${index + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <motion.div
+                        className="absolute -inset-1 bg-gradient-to-r from-cyan-400/30 to-blue-400/30 rounded-xl blur-sm -z-10"
+                        animate={{
+                          opacity: [0.3, 0.6, 0.3],
+                        }}
+                        transition={{
+                          duration: 2,
+                          repeat: Number.POSITIVE_INFINITY,
+                          ease: "easeInOut",
+                          delay: nft.delay,
+                        }}
+                      />
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* Details */}
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <Badge className="bg-gradient-to-r from-cyan-400/20 to-blue-400/20 text-cyan-300 border-cyan-400/30 text-sm md:text-base px-4 py-2">
+                      FREE ENTRY FOR NFT HOLDERS
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm md:text-base">
+                    <div className="space-y-2">
+                      <h4 className="font-semibold text-cyan-300 flex items-center gap-2">
+                        <Gift className="h-4 w-4" />
+                        Exclusive Benefits
+                      </h4>
+                      <ul className="space-y-1 text-muted-foreground">
+                        <li>• Daily raffle entry (all 3 days)</li>
+                        <li>• No purchase necessary</li>
+                        <li>• Multiple NFTs = multiple entries</li>
+                        <li>• Instant verification at event</li>
+                      </ul>
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className="font-semibold text-cyan-300 flex items-center gap-2">
+                        <Crown className="h-4 w-4" />
+                        How to Participate
+                      </h4>
+                      <ul className="space-y-1 text-muted-foreground">
+                        <li>• Show your KASPER NFT at registration</li>
+                        <li>• Receive exclusive raffle tickets</li>
+                        <li>• Daily drawings at 6 PM</li>
+                        <li>• Winners announced live</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="text-center pt-4 border-t border-cyan-400/20">
+                    <p className="text-sm text-cyan-300/80">
+                      Don't have a KASPER NFT? Visit{" "}
+                      <a
+                        href="https://x.com/kaspercoin"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-cyan-400 hover:text-cyan-300 underline"
+                      >
+                        Kasper on X
+                      </a>{" "}
+                      to learn more about the collection
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
         </motion.div>
 
         <motion.div

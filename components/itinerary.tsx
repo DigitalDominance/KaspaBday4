@@ -304,8 +304,8 @@ export function Itinerary() {
                 />
               </div>
 
-              <CardHeader className="relative z-10">
-                <div className="flex items-center gap-3 mb-4">
+              <CardHeader className="relative z-10 text-center">
+                <div className="flex flex-col items-center gap-3 mb-4">
                   <Crown className="h-8 w-8 text-cyan-400" />
                   <div>
                     <CardTitle className="text-2xl md:text-3xl font-space-grotesk bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400">
@@ -405,8 +405,8 @@ export function Itinerary() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm md:text-base">
-                    <div className="space-y-2">
-                      <h4 className="font-semibold text-cyan-300 flex items-center gap-2">
+                    <div className="space-y-2 text-center">
+                      <h4 className="font-semibold text-cyan-300 flex items-center justify-center gap-2">
                         <Gift className="h-4 w-4" />
                         Exclusive Benefits
                       </h4>
@@ -417,8 +417,8 @@ export function Itinerary() {
                         <li>• Instant verification at event</li>
                       </ul>
                     </div>
-                    <div className="space-y-2">
-                      <h4 className="font-semibold text-cyan-300 flex items-center gap-2">
+                    <div className="space-y-2 text-center">
+                      <h4 className="font-semibold text-cyan-300 flex items-center justify-center gap-2">
                         <Crown className="h-4 w-4" />
                         How to Participate
                       </h4>

@@ -25,7 +25,7 @@ export default function Home() {
     if (document.readyState === "complete") {
       const minLoadTime = setTimeout(() => {
         setIsLoading(false)
-      }, 2000) // Minimum 2 seconds
+      }, 2500) 
       return () => clearTimeout(minLoadTime)
     }
 

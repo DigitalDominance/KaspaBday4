@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server"
-import { getAllTicketStock } from "@/lib/ticket-stock"
+import { TicketStockModel } from "@/lib/models/TicketStock"
 
 export async function GET() {
   try {
-    const stock = await getAllTicketStock()
-    return NextResponse.json(stock)
+    // Initialize stock if not exists
+    await TicketStockModel.initializeStock()
+
+    // Get current stock info
+    const stockInfo = await TicketStockModel.getStockInfo()
+
+    return NextResponse.json(stockInfo)
   } catch (error) {
-    console.error("Ticket stock error:", error)
-    return NextResponse.json({ error: "Failed to get ticket stock" }, { status: 500 })
+    console.error("Error fetching ticket stock:", error)
+    return NextResponse.json({ error: "Failed to fetch ticket stock" }, { status: 500 })
   }
 }

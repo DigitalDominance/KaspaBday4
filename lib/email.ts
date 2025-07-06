@@ -1,41 +1,176 @@
 import type { KaspaBirthdayTicket } from "@/lib/models/KaspaBirthdayTickets"
+import { Resend } from "resend"
 
-// Email service configuration - using custom domain
-const RESEND_API_KEY = process.env.RESEND_API_KEY
-const FROM_EMAIL = "tickets@kaspaevents.xyz"
-const REPLY_TO_EMAIL = "tickets@kaspaevents.xyz"
+const resend = new Resend(process.env.RESEND_API_KEY)
 
 interface EmailTicketData {
   ticket: KaspaBirthdayTicket
   qrCodeDataUrl: string
 }
 
+interface TicketEmailData {
+  orderId: string
+  customerName: string
+  customerEmail: string
+  ticketType: string
+  quantity: number
+  totalAmount: number
+  qrCodeSvg?: string
+}
+
+export async function sendTicketEmail(data: TicketEmailData): Promise<boolean> {
+  try {
+    const { orderId, customerName, customerEmail, ticketType, quantity, totalAmount, qrCodeSvg } = data
+
+    const ticketTypeNames: Record<string, string> = {
+      "1-day": "1-Day Pass",
+      "2-day": "2-Day Pass",
+      "3-day": "3-Day Pass",
+      vip: "VIP Pass",
+    }
+
+    const ticketName = ticketTypeNames[ticketType] || ticketType
+
+    const emailHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Your Kaspa Birthday Celebration Ticket</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8fafc; padding: 30px; border-radius: 0 0 10px 10px; }
+            .ticket-card { background: white; border: 2px solid #e2e8f0; border-radius: 10px; padding: 25px; margin: 20px 0; }
+            .qr-section { text-align: center; margin: 25px 0; padding: 20px; background: #f1f5f9; border-radius: 8px; }
+            .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; }
+            .detail-item { padding: 10px; background: #f8fafc; border-radius: 5px; }
+            .detail-label { font-weight: bold; color: #475569; font-size: 12px; text-transform: uppercase; }
+            .detail-value { color: #1e293b; font-size: 16px; margin-top: 5px; }
+            .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0; color: #64748b; }
+            .button { display: inline-block; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 10px 5px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🎉 Your Kaspa Birthday Ticket!</h1>
+              <p>Thank you for joining our celebration</p>
+            </div>
+            
+            <div class="content">
+              <div class="ticket-card">
+                <h2 style="color: #1e293b; margin-top: 0;">Ticket Details</h2>
+                
+                <div class="details-grid">
+                  <div class="detail-item">
+                    <div class="detail-label">Order ID</div>
+                    <div class="detail-value">${orderId}</div>
+                  </div>
+                  <div class="detail-item">
+                    <div class="detail-label">Ticket Type</div>
+                    <div class="detail-value">${ticketName}</div>
+                  </div>
+                  <div class="detail-item">
+                    <div class="detail-label">Quantity</div>
+                    <div class="detail-value">${quantity} ticket${quantity > 1 ? "s" : ""}</div>
+                  </div>
+                  <div class="detail-item">
+                    <div class="detail-label">Total Paid</div>
+                    <div class="detail-value">$${totalAmount}</div>
+                  </div>
+                  <div class="detail-item">
+                    <div class="detail-label">Event Date</div>
+                    <div class="detail-value">November 7-9, 2025</div>
+                  </div>
+                  <div class="detail-item">
+                    <div class="detail-label">Venue</div>
+                    <div class="detail-value">Kaspa Community Center<br>Liverpool, NY</div>
+                  </div>
+                </div>
+
+                ${
+                  qrCodeSvg
+                    ? `
+                  <div class="qr-section">
+                    <h3 style="margin-top: 0; color: #1e293b;">Your Entry QR Code</h3>
+                    <p style="color: #64748b; margin-bottom: 20px;">Present this QR code at the event entrance</p>
+                    <div style="display: inline-block; padding: 20px; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                      ${qrCodeSvg}
+                    </div>
+                    <p style="color: #64748b; font-size: 12px; margin-top: 15px;">
+                      Save this email or take a screenshot of the QR code
+                    </p>
+                  </div>
+                `
+                    : ""
+                }
+
+                <div style="background: #dbeafe; border: 1px solid #3b82f6; border-radius: 8px; padding: 20px; margin: 25px 0;">
+                  <h4 style="color: #1e40af; margin-top: 0;">Important Information</h4>
+                  <ul style="color: #1e293b; margin: 0; padding-left: 20px;">
+                    <li>Bring a valid ID that matches the name on this ticket</li>
+                    <li>Doors open at 9:00 AM each day</li>
+                    <li>All meals and beverages are included</li>
+                    <li>Parking is free at the venue</li>
+                    <li>Event is rain or shine</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="footer">
+                <p>Questions? Contact us at <a href="mailto:tickets@kaspaevents.xyz">tickets@kaspaevents.xyz</a></p>
+                <p style="font-size: 12px; color: #94a3b8;">
+                  This ticket is non-transferable and non-refundable.<br>
+                  Kaspa 4th Birthday Celebration • November 7-9, 2025
+                </p>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `
+
+    const result = await resend.emails.send({
+      from: "tickets@kaspaevents.xyz",
+      to: customerEmail,
+      subject: `🎫 Your Kaspa Birthday Ticket - ${ticketName}`,
+      html: emailHtml,
+    })
+
+    console.log("✅ Ticket email sent:", result.data?.id)
+    return true
+  } catch (error) {
+    console.error("❌ Error sending ticket email:", error)
+    return false
+  }
+}
+
 export class EmailService {
   static async sendTicketEmail({ ticket, qrCodeDataUrl }: EmailTicketData) {
-    if (!RESEND_API_KEY) {
+    if (!process.env.RESEND_API_KEY) {
       console.error("RESEND_API_KEY not configured")
       return false
     }
 
     try {
-      const emailHtml = this.generateTicketEmailHTML(ticket, qrCodeDataUrl)
-      const emailText = this.generateTicketEmailText(ticket)
-
       console.log(`Sending ticket email to: ${ticket.customerEmail}`)
 
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${RESEND_API_KEY}`,
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: `Kaspa Birthday Event <${FROM_EMAIL}>`,
+          from: `Kaspa Birthday Event <tickets@kaspaevents.xyz>`,
           to: [ticket.customerEmail],
-          reply_to: REPLY_TO_EMAIL,
+          reply_to: "tickets@kaspaevents.xyz",
           subject: `🎉 Your Kaspa 4th Birthday Ticket is Ready! - Order ${ticket.orderId}`,
-          html: emailHtml,
-          text: emailText,
+          html: this.generateTicketEmailHTML(ticket, qrCodeDataUrl),
+          text: this.generateTicketEmailText(ticket),
         }),
       })
 
@@ -534,7 +669,7 @@ BlockDAG • Parallel Blocks • Instant Finality
   }
 
   static async sendPaymentConfirmationEmail(ticket: KaspaBirthdayTicket) {
-    if (!RESEND_API_KEY) {
+    if (!process.env.RESEND_API_KEY) {
       console.error("RESEND_API_KEY not configured")
       return false
     }
@@ -545,13 +680,13 @@ BlockDAG • Parallel Blocks • Instant Finality
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${RESEND_API_KEY}`,
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: `Kaspa Birthday Event <${FROM_EMAIL}>`,
+          from: `Kaspa Birthday Event <tickets@kaspaevents.xyz>`,
           to: [ticket.customerEmail],
-          reply_to: REPLY_TO_EMAIL,
+          reply_to: "tickets@kaspaevents.xyz",
           subject: `💰 Payment Received - Kaspa Birthday Ticket Processing`,
           html: this.generatePaymentConfirmationHTML(ticket),
           text: this.generatePaymentConfirmationText(ticket),

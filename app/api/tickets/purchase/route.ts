@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { NOWPaymentsAPI } from "@/lib/nowpayments"
 import { TicketStockModel } from "@/lib/models/TicketStock"
-import { TicketReservationModel } from "@/lib/models/TicketReservation"
 import { KaspaBirthdayTicketsModel } from "@/lib/models/KaspaBirthdayTickets"
 
 const TICKET_PRICES = {
@@ -38,7 +37,7 @@ export async function POST(request: Request) {
     // Create order ID
     const orderId = `KASPA-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
-    // Reserve tickets in stock system (15-minute timer)
+    // Reserve tickets in stock system
     const reserved = await TicketStockModel.reserveTickets(ticketType, quantity)
     if (!reserved) {
       return NextResponse.json({ error: "Failed to reserve tickets" }, { status: 400 })
@@ -66,15 +65,6 @@ export async function POST(request: Request) {
         await TicketStockModel.releaseReservation(ticketType, quantity)
         return NextResponse.json({ error: payment.error }, { status: 400 })
       }
-
-      // Create reservation record with 15-minute timer
-      await TicketReservationModel.createReservation(
-        orderId,
-        payment.payment_id,
-        ticketType,
-        quantity,
-        customerInfo.email,
-      )
 
       // Store ticket order in database
       const ticketRecord = await KaspaBirthdayTicketsModel.create({

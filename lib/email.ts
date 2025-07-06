@@ -5,7 +5,6 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 
 interface EmailTicketData {
   ticket: KaspaBirthdayTicket
-  qrCodeDataUrl: string
 }
 
 interface TicketEmailData {
@@ -15,12 +14,11 @@ interface TicketEmailData {
   ticketType: string
   quantity: number
   totalAmount: number
-  qrCodeSvg?: string
 }
 
 export async function sendTicketEmail(data: TicketEmailData): Promise<boolean> {
   try {
-    const { orderId, customerName, customerEmail, ticketType, quantity, totalAmount, qrCodeSvg } = data
+    const { orderId, customerName, customerEmail, ticketType, quantity, totalAmount } = data
 
     const ticketTypeNames: Record<string, string> = {
       "1-day": "1-Day Pass",
@@ -44,7 +42,6 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<boolean> {
             .header { background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
             .content { background: #f8fafc; padding: 30px; border-radius: 0 0 10px 10px; }
             .ticket-card { background: white; border: 2px solid #e2e8f0; border-radius: 10px; padding: 25px; margin: 20px 0; }
-            .qr-section { text-align: center; margin: 25px 0; padding: 20px; background: #f1f5f9; border-radius: 8px; }
             .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; }
             .detail-item { padding: 10px; background: #f8fafc; border-radius: 5px; }
             .detail-label { font-weight: bold; color: #475569; font-size: 12px; text-transform: uppercase; }
@@ -91,27 +88,11 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<boolean> {
                   </div>
                 </div>
 
-                ${
-                  qrCodeSvg
-                    ? `
-                  <div class="qr-section">
-                    <h3 style="margin-top: 0; color: #1e293b;">Your Entry QR Code</h3>
-                    <p style="color: #64748b; margin-bottom: 20px;">Present this QR code at the event entrance</p>
-                    <div style="display: inline-block; padding: 20px; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                      ${qrCodeSvg}
-                    </div>
-                    <p style="color: #64748b; font-size: 12px; margin-top: 15px;">
-                      Save this email or take a screenshot of the QR code
-                    </p>
-                  </div>
-                `
-                    : ""
-                }
-
                 <div style="background: #dbeafe; border: 1px solid #3b82f6; border-radius: 8px; padding: 20px; margin: 25px 0;">
                   <h4 style="color: #1e40af; margin-top: 0;">Important Information</h4>
                   <ul style="color: #1e293b; margin: 0; padding-left: 20px;">
                     <li>Bring a valid ID that matches the name on this ticket</li>
+                    <li>Present this email confirmation at check-in</li>
                     <li>Doors open at 9:00 AM each day</li>
                     <li>All meals and beverages are included</li>
                     <li>Parking is free at the venue</li>
@@ -149,7 +130,7 @@ export async function sendTicketEmail(data: TicketEmailData): Promise<boolean> {
 }
 
 export class EmailService {
-  static async sendTicketEmail({ ticket, qrCodeDataUrl }: EmailTicketData) {
+  static async sendTicketEmail({ ticket }: EmailTicketData) {
     if (!process.env.RESEND_API_KEY) {
       console.error("RESEND_API_KEY not configured")
       return false
@@ -169,7 +150,7 @@ export class EmailService {
           to: [ticket.customerEmail],
           reply_to: "tickets@kaspaevents.xyz",
           subject: `🎉 Your Kaspa 4th Birthday Ticket is Ready! - Order ${ticket.orderId}`,
-          html: this.generateTicketEmailHTML(ticket, qrCodeDataUrl),
+          html: this.generateTicketEmailHTML(ticket),
           text: this.generateTicketEmailText(ticket),
         }),
       })
@@ -190,7 +171,7 @@ export class EmailService {
     }
   }
 
-  static generateTicketEmailHTML(ticket: KaspaBirthdayTicket, qrCodeDataUrl: string): string {
+  static generateTicketEmailHTML(ticket: KaspaBirthdayTicket): string {
     const eventDate = "November 7-9, 2025"
     const venue = "Kaspa Community Center, Liverpool, NY"
 
@@ -288,17 +269,6 @@ export class EmailService {
             right: 0;
             height: 4px;
             background: linear-gradient(90deg, #667eea, #764ba2, #f093fb);
-        }
-        
-        .qr-code {
-            width: 200px;
-            height: 200px;
-            margin: 0 auto 20px;
-            border: 3px solid #667eea;
-            border-radius: 10px;
-            background: white;
-            padding: 10px;
-            display: block;
         }
         
         .ticket-info {
@@ -446,20 +416,6 @@ export class EmailService {
             transform: translateY(-2px);
         }
         
-        .backup-info {
-            background: #e3f2fd;
-            border: 1px solid #2196f3;
-            border-radius: 10px;
-            padding: 15px;
-            margin: 20px 0;
-            text-align: center;
-        }
-        
-        .backup-info h4 {
-            color: #1976d2;
-            margin-bottom: 10px;
-        }
-        
         @media (max-width: 600px) {
             .email-container {
                 margin: 10px;
@@ -476,11 +432,6 @@ export class EmailService {
             
             .ticket-card {
                 padding: 20px;
-            }
-            
-            .qr-code {
-                width: 150px;
-                height: 150px;
             }
             
             .info-row {
@@ -508,13 +459,6 @@ export class EmailService {
             </p>
             
             <div class="ticket-card">
-                <img src="${qrCodeDataUrl}" alt="Ticket QR Code" class="qr-code">
-                
-                <div class="backup-info">
-                    <h4>📱 Save This QR Code</h4>
-                    <p style="font-size: 14px; color: #666;">Screenshot or save this email to your phone for easy access at the event</p>
-                </div>
-                
                 <div class="ticket-info">
                     <h3>🎫 Your Digital Ticket</h3>
                     <div class="info-row">
@@ -568,8 +512,8 @@ export class EmailService {
             <div class="instructions">
                 <h4>📱 Important Instructions</h4>
                 <ul>
-                    <li>Save this email and QR code to your phone</li>
-                    <li>Present the QR code at event check-in</li>
+                    <li>Save this email confirmation to your phone</li>
+                    <li>Present this email at event check-in</li>
                     <li>Arrive 15 minutes early for smooth entry</li>
                     <li>Bring a valid photo ID for verification</li>
                     <li>Keep your ticket safe - it cannot be replaced if lost</li>
@@ -638,8 +582,8 @@ TICKET DETAILS:
 - Total Paid: $${ticket.totalAmount}
 
 IMPORTANT INSTRUCTIONS:
-✓ Save this email and QR code to your phone
-✓ Present the QR code at event check-in  
+✓ Save this email confirmation to your phone
+✓ Present this email at event check-in  
 ✓ Arrive 15 minutes early for smooth entry
 ✓ Bring a valid photo ID for verification
 ✓ Keep your ticket safe - it cannot be replaced if lost
@@ -769,7 +713,7 @@ BlockDAG • Parallel Blocks • Instant Finality
         </div>
         
         <div class="footer">
-            <p>You'll receive your digital ticket with QR code within the next few minutes.</p>
+            <p>You'll receive your digital ticket confirmation within the next few minutes.</p>
             <p style="margin-top: 15px;">Questions? Reply to this email and we'll help you out!</p>
             <p style="margin-top: 20px; font-size: 12px; color: #999;">
                 Kaspa Community • Building the future together

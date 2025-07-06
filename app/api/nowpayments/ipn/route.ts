@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { NOWPaymentsAPI } from "@/lib/nowpayments"
 import { generateTicketQR } from "@/lib/qr-generator"
+import { KaspaBirthdayTicketsModel } from "@/lib/models/KaspaBirthdayTickets"
 
 export async function POST(request: Request) {
   try {
@@ -19,26 +20,42 @@ export async function POST(request: Request) {
     }
 
     // Process payment status update
-    const { payment_id, payment_status, order_id } = body
+    const { payment_id, payment_status, order_id, actually_paid, actually_paid_at_fiat, pay_currency } = body
 
     console.log(`Payment ${payment_id} status: ${payment_status}`)
 
-    // If payment is finished, generate ticket
+    // Find the ticket record
+    const ticket = await KaspaBirthdayTicketsModel.findByPaymentId(payment_id)
+    if (!ticket) {
+      console.error(`Ticket not found for payment ID: ${payment_id}`)
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 })
+    }
+
+    // Update payment status
+    const updateData: any = {
+      paymentStatus: payment_status,
+      actuallyPaid: actually_paid,
+    }
+
+    // If payment is finished, generate ticket QR code
     if (payment_status === "finished") {
-      // In production, fetch order from database
-      // For demo, we'll simulate the order data
       const ticketData = generateTicketQR({
-        orderId: order_id,
-        customerName: "Customer Name", // Get from database
-        customerEmail: "customer@email.com", // Get from database
-        ticketType: "2-day", // Get from database
-        quantity: 1, // Get from database
+        orderId: ticket.orderId,
+        customerName: ticket.customerName,
+        customerEmail: ticket.customerEmail,
+        ticketType: ticket.ticketType,
+        quantity: ticket.quantity,
         eventDate: "November 7-9, 2025",
       })
 
-      // Store ticket QR code in database
-      console.log("Ticket generated:", ticketData.ticketInfo)
+      updateData.qrCode = ticketData.qrCodeDataUrl
+      updateData.ticketData = ticketData.ticketInfo
+
+      console.log(`Ticket generated for order: ${ticket.orderId}`)
     }
+
+    // Update the ticket record
+    await KaspaBirthdayTicketsModel.updatePaymentStatus(payment_id, updateData)
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -3,7 +3,7 @@ import { getAllTicketStock } from "@/lib/ticket-stock"
 
 export async function GET() {
   try {
-    const stock = getAllTicketStock()
+    const stock = await getAllTicketStock()
     return NextResponse.json(stock)
   } catch (error) {
     console.error("Ticket stock error:", error)

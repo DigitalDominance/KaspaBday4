@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server"
 import { NOWPaymentsAPI } from "@/lib/nowpayments"
-import { isTicketAvailable, reserveTickets } from "@/lib/ticket-stock"
+import { isTicketAvailable } from "@/lib/ticket-stock"
+import { KaspaBirthdayTicketsModel } from "@/lib/models/KaspaBirthdayTickets"
 
 const TICKET_PRICES = {
-  "1-day": 75,
-  "2-day": 125,
-  "3-day": 175,
-  vip: 299,
+  "1-day": { price: 75, name: "1-Day Pass" },
+  "2-day": { price: 125, name: "2-Day Pass" },
+  "3-day": { price: 175, name: "3-Day Pass" },
+  vip: { price: 299, name: "VIP Pass" },
 }
 
 export async function POST(request: Request) {
@@ -20,22 +21,17 @@ export async function POST(request: Request) {
     }
 
     // Check ticket availability
-    if (!isTicketAvailable(ticketType, quantity)) {
+    if (!(await isTicketAvailable(ticketType, quantity))) {
       return NextResponse.json({ error: "Tickets not available" }, { status: 400 })
     }
 
-    // Calculate total amount
-    const ticketPrice = TICKET_PRICES[ticketType as keyof typeof TICKET_PRICES]
-    if (!ticketPrice) {
+    // Get ticket info
+    const ticketInfo = TICKET_PRICES[ticketType as keyof typeof TICKET_PRICES]
+    if (!ticketInfo) {
       return NextResponse.json({ error: "Invalid ticket type" }, { status: 400 })
     }
 
-    const totalAmount = ticketPrice * quantity
-
-    // Reserve tickets temporarily
-    if (!reserveTickets(ticketType, quantity)) {
-      return NextResponse.json({ error: "Failed to reserve tickets" }, { status: 400 })
-    }
+    const totalAmount = ticketInfo.price * quantity
 
     // Create order ID
     const orderId = `KASPA-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -48,7 +44,7 @@ export async function POST(request: Request) {
       price_currency: "usd",
       pay_currency: currency,
       order_id: orderId,
-      order_description: `Kaspa 4th Birthday - ${quantity}x ${ticketType} ticket(s) for ${customerInfo.name}`,
+      order_description: `Kaspa 4th Birthday - ${quantity}x ${ticketInfo.name} for ${customerInfo.name}`,
       ipn_callback_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/nowpayments/ipn`,
       success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/ticket-success?order=${orderId}`,
       cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/tickets`,
@@ -57,28 +53,37 @@ export async function POST(request: Request) {
     const payment = await nowPayments.createPayment(paymentData)
 
     if (payment.error) {
-      // Release reserved tickets on error
-      // releaseTickets(ticketType, quantity)
       return NextResponse.json({ error: payment.error }, { status: 400 })
     }
 
-    // Store order in database (simplified for demo)
-    const orderData = {
+    // Store ticket order in database
+    const ticketRecord = await KaspaBirthdayTicketsModel.create({
       orderId,
-      customerInfo,
+      customerName: customerInfo.name,
+      customerEmail: customerInfo.email,
       ticketType,
+      ticketName: ticketInfo.name,
       quantity,
+      pricePerTicket: ticketInfo.price,
       totalAmount,
       currency,
       paymentId: payment.payment_id,
       paymentStatus: payment.payment_status,
       payAddress: payment.pay_address,
       payAmount: payment.pay_amount,
-    }
+      payCurrency: payment.pay_currency,
+    })
 
     return NextResponse.json({
       success: true,
-      order: orderData,
+      order: {
+        orderId,
+        paymentId: payment.payment_id,
+        payAddress: payment.pay_address,
+        payAmount: payment.pay_amount,
+        payCurrency: payment.pay_currency,
+        paymentStatus: payment.payment_status,
+      },
       payment: payment,
     })
   } catch (error) {

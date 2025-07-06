@@ -146,8 +146,8 @@ export function Tickets() {
   useEffect(() => {
     fetchTicketStock()
 
-    // Update stock every 5 seconds for live updates
-    const interval = setInterval(fetchTicketStock, 5000)
+    // Update stock every 10 seconds for live updates
+    const interval = setInterval(fetchTicketStock, 10000)
     return () => clearInterval(interval)
   }, [])
 
@@ -176,7 +176,7 @@ export function Tickets() {
   }
 
   const handlePurchaseComplete = () => {
-    // Refresh stock after purchase
+    // Refresh stock immediately after purchase action
     fetchTicketStock()
   }
 

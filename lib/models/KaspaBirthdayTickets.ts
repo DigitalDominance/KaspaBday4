@@ -17,16 +17,12 @@ export interface KaspaBirthdayTicket {
   payAddress?: string
   payAmount?: number
   payCurrency?: string
-  actuallyPaid?: number
+  reservationExpiresAt?: Date
   qrCode?: string
-  ticketData?: any
+  ticketNumber?: string
+  notes?: string
   createdAt: Date
   updatedAt: Date
-  paidAt?: Date
-  emailSent?: boolean
-  paymentConfirmationEmailSent?: boolean
-  notes?: string
-  reservationExpiresAt?: Date
 }
 
 export class KaspaBirthdayTicketsModel {
@@ -38,70 +34,77 @@ export class KaspaBirthdayTicketsModel {
     return db.collection<KaspaBirthdayTicket>(this.collectionName)
   }
 
-  static async create(ticketData: Omit<KaspaBirthdayTicket, "_id" | "createdAt" | "updatedAt">) {
+  static async create(
+    ticketData: Omit<KaspaBirthdayTicket, "_id" | "createdAt" | "updatedAt">,
+  ): Promise<KaspaBirthdayTicket> {
     const collection = await this.getCollection()
-    const now = new Date()
 
     const ticket: KaspaBirthdayTicket = {
       ...ticketData,
-      createdAt: now,
-      updatedAt: now,
-      emailSent: false,
-      paymentConfirmationEmailSent: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     }
 
     const result = await collection.insertOne(ticket)
     return { ...ticket, _id: result.insertedId }
   }
 
-  static async findByOrderId(orderId: string) {
-    const collection = await this.getCollection()
-    return await collection.findOne({ orderId })
-  }
-
-  static async findByPaymentId(paymentId: string) {
+  static async findByPaymentId(paymentId: string): Promise<KaspaBirthdayTicket | null> {
     const collection = await this.getCollection()
     return await collection.findOne({ paymentId })
   }
 
-  static async findExpiredReservations() {
+  static async findByOrderId(orderId: string): Promise<KaspaBirthdayTicket | null> {
     const collection = await this.getCollection()
-    const now = new Date()
-
-    return await collection
-      .find({
-        paymentStatus: "waiting",
-        reservationExpiresAt: { $lt: now },
-      })
-      .toArray()
+    return await collection.findOne({ orderId })
   }
 
-  static async updatePaymentStatus(paymentId: string, updateData: Partial<KaspaBirthdayTicket>) {
+  static async updatePaymentStatus(
+    paymentId: string,
+    updateData: {
+      paymentStatus: string
+      payAddress?: string
+      payAmount?: number
+      payCurrency?: string
+      qrCode?: string
+      ticketNumber?: string
+      notes?: string
+    },
+  ): Promise<boolean> {
     const collection = await this.getCollection()
-    const now = new Date()
 
     const result = await collection.updateOne(
       { paymentId },
       {
         $set: {
           ...updateData,
-          updatedAt: now,
-          ...(updateData.paymentStatus === "finished" && { paidAt: now }),
+          updatedAt: new Date(),
         },
       },
     )
 
-    return result
+    return result.modifiedCount > 0
   }
 
-  static async findByEmail(email: string) {
+  static async findExpiredReservations(): Promise<KaspaBirthdayTicket[]> {
+    const collection = await this.getCollection()
+
+    return await collection
+      .find({
+        paymentStatus: "waiting",
+        reservationExpiresAt: { $lt: new Date() },
+      })
+      .toArray()
+  }
+
+  static async findByCustomerEmail(email: string): Promise<KaspaBirthdayTicket[]> {
     const collection = await this.getCollection()
     return await collection.find({ customerEmail: email }).toArray()
   }
 
-  static async getAllTickets(limit = 100, skip = 0) {
+  static async getAllTickets(): Promise<KaspaBirthdayTicket[]> {
     const collection = await this.getCollection()
-    return await collection.find({}).sort({ createdAt: -1 }).limit(limit).skip(skip).toArray()
+    return await collection.find({}).sort({ createdAt: -1 }).toArray()
   }
 
   static async getTicketStats() {
@@ -112,11 +115,19 @@ export class KaspaBirthdayTicketsModel {
         {
           $group: {
             _id: "$ticketType",
-            totalSold: { $sum: "$quantity" },
-            totalRevenue: { $sum: "$totalAmount" },
-            paidTickets: {
+            totalSold: {
               $sum: {
                 $cond: [{ $eq: ["$paymentStatus", "finished"] }, "$quantity", 0],
+              },
+            },
+            totalPending: {
+              $sum: {
+                $cond: [{ $eq: ["$paymentStatus", "waiting"] }, "$quantity", 0],
+              },
+            },
+            totalRevenue: {
+              $sum: {
+                $cond: [{ $eq: ["$paymentStatus", "finished"] }, { $multiply: ["$pricePerTicket", "$quantity"] }, 0],
               },
             },
           },
@@ -125,32 +136,5 @@ export class KaspaBirthdayTicketsModel {
       .toArray()
 
     return stats
-  }
-
-  static async getEmailStats() {
-    const collection = await this.getCollection()
-
-    const emailStats = await collection
-      .aggregate([
-        {
-          $group: {
-            _id: null,
-            totalTickets: { $sum: 1 },
-            emailsSent: { $sum: { $cond: ["$emailSent", 1, 0] } },
-            paymentConfirmationsSent: { $sum: { $cond: ["$paymentConfirmationEmailSent", 1, 0] } },
-            finishedPayments: { $sum: { $cond: [{ $eq: ["$paymentStatus", "finished"] }, 1, 0] } },
-          },
-        },
-      ])
-      .toArray()
-
-    return (
-      emailStats[0] || {
-        totalTickets: 0,
-        emailsSent: 0,
-        paymentConfirmationsSent: 0,
-        finishedPayments: 0,
-      }
-    )
   }
 }

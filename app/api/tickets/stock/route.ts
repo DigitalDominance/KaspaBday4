@@ -6,10 +6,7 @@ export async function GET() {
     // Initialize stock if it doesn't exist
     await TicketStockModel.initializeStock()
 
-    // Clean up expired reservations first
-    await TicketStockModel.cleanupExpiredReservations()
-
-    // Get current stock info
+    // Get current stock info (this will also clean up expired reservations)
     const stockInfo = await TicketStockModel.getStockInfo()
 
     return NextResponse.json({
@@ -17,7 +14,35 @@ export async function GET() {
       stock: stockInfo,
     })
   } catch (error) {
-    console.error("Stock fetch error:", error)
-    return NextResponse.json({ error: "Failed to fetch stock information" }, { status: 500 })
+    console.error("Stock API error:", error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Failed to fetch stock information",
+      },
+      { status: 500 },
+    )
+  }
+}
+
+// Also handle POST for manual cleanup
+export async function POST() {
+  try {
+    const cleanedCount = await TicketStockModel.cleanupExpiredReservations()
+
+    return NextResponse.json({
+      success: true,
+      message: `Cleaned up ${cleanedCount} expired reservations`,
+      cleanedCount,
+    })
+  } catch (error) {
+    console.error("Cleanup error:", error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Failed to cleanup expired reservations",
+      },
+      { status: 500 },
+    )
   }
 }

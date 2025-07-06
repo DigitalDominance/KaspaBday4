@@ -52,19 +52,47 @@ export class NOWPaymentsAPI {
     success_url: string
     cancel_url: string
   }) {
+    console.log(`🚀 Creating NOWPayments payment:`, {
+      ...paymentData,
+      ipn_callback_url: paymentData.ipn_callback_url,
+    })
+
     const response = await fetch(`${NOWPAYMENTS_API_URL}/payment`, {
       method: "POST",
       headers: this.headers,
       body: JSON.stringify(paymentData),
     })
-    return response.json()
+
+    const result = await response.json()
+    console.log(`📝 NOWPayments create response:`, result)
+
+    return result
   }
 
   async getPaymentStatus(paymentId: string) {
+    console.log(`🔍 Fetching payment status for ID: ${paymentId}`)
+
     const response = await fetch(`${NOWPAYMENTS_API_URL}/payment/${paymentId}`, {
       headers: this.headers,
     })
-    return response.json()
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error(`❌ NOWPayments API error (${response.status}):`, errorText)
+      throw new Error(`NOWPayments API error: ${response.status} - ${errorText}`)
+    }
+
+    const result = await response.json()
+    console.log(`📊 NOWPayments status response:`, {
+      payment_id: result.payment_id,
+      payment_status: result.payment_status,
+      actually_paid: result.actually_paid,
+      pay_amount: result.pay_amount,
+      created_at: result.created_at,
+      updated_at: result.updated_at,
+    })
+
+    return result
   }
 
   verifyIPN(signature: string, body: any): boolean {

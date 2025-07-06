@@ -21,6 +21,7 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
   const [refreshing, setRefreshing] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lastChecked, setLastChecked] = useState<Date | null>(null)
 
   useEffect(() => {
     // Load payment from storage
@@ -32,7 +33,7 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
 
     // Start polling for status updates
     checkPaymentStatus()
-    const interval = setInterval(checkPaymentStatus, 10000) // Check every 10 seconds
+    const interval = setInterval(checkPaymentStatus, 8000) // Check every 8 seconds
 
     return () => clearInterval(interval)
   }, [paymentId])
@@ -41,21 +42,32 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
     try {
       setRefreshing(true)
       setError(null)
+      setLastChecked(new Date())
+
+      console.log(`🔍 Checking payment status for: ${paymentId}`)
 
       const response = await fetch(`/api/payments/${paymentId}/status`)
       const data = await response.json()
 
       if (response.ok) {
         const newStatus = data.payment_status
+        console.log(`📊 Payment ${paymentId} status: ${currentStatus} → ${newStatus}`)
+
         setCurrentStatus(newStatus)
 
         // Update stored payment
         PaymentStorage.updatePaymentStatus(paymentId, newStatus)
 
-        // Update payment object
+        // Update payment object with latest data
         if (payment) {
-          const updatedPayment = { ...payment, paymentStatus: newStatus }
+          const updatedPayment = {
+            ...payment,
+            paymentStatus: newStatus,
+            // Update other fields if available
+            ...(data.actually_paid && { actuallyPaid: data.actually_paid }),
+          }
           setPayment(updatedPayment)
+          PaymentStorage.savePayment(updatedPayment)
         }
 
         // Notify parent component
@@ -63,15 +75,16 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
           onStatusChange(newStatus)
         }
 
-        // If payment is finished, we can stop polling
-        if (newStatus === "finished" || newStatus === "failed" || newStatus === "expired") {
-          // Don't clear interval here, let parent component handle it
+        // Log status changes
+        if (currentStatus !== newStatus) {
+          console.log(`🔄 Status changed from ${currentStatus} to ${newStatus}`)
         }
       } else {
+        console.error(`❌ API error:`, data)
         setError(data.error || "Failed to check payment status")
       }
     } catch (error) {
-      console.error("Payment status check error:", error)
+      console.error("❌ Payment status check error:", error)
       setError("Network error occurred")
     } finally {
       setLoading(false)
@@ -200,15 +213,20 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
                 <p className="text-sm text-muted-foreground font-normal">{statusInfo.description}</p>
               </div>
             </CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={checkPaymentStatus}
-              disabled={refreshing}
-              className="flex-shrink-0 bg-transparent"
-            >
-              <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
-            </Button>
+            <div className="flex flex-col items-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={checkPaymentStatus}
+                disabled={refreshing}
+                className="flex-shrink-0 bg-transparent"
+              >
+                <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+              </Button>
+              {lastChecked && (
+                <span className="text-xs text-muted-foreground">Last checked: {lastChecked.toLocaleTimeString()}</span>
+              )}
+            </div>
           </div>
         </CardHeader>
       </Card>
@@ -264,6 +282,13 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Debug Info */}
+            <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+              <div>Payment ID: {paymentId}</div>
+              <div>Current Status: {currentStatus}</div>
+              <div>Auto-refresh: Every 8 seconds</div>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -341,6 +366,9 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
               <span className="font-medium">Error checking payment status</span>
             </div>
             <p className="text-sm text-red-600 dark:text-red-400 mt-1">{error}</p>
+            <Button variant="outline" size="sm" onClick={checkPaymentStatus} className="mt-2 bg-transparent">
+              Try Again
+            </Button>
           </CardContent>
         </Card>
       )}

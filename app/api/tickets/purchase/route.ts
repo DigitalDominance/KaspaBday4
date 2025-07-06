@@ -1,112 +1,61 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { connectToDatabase } from "@/lib/mongodb"
-import { TicketStockModel } from "@/lib/models/TicketStock"
-import { KaspaBirthdayTicketsModel } from "@/lib/models/KaspaBirthdayTickets"
-import { NOWPaymentsAPI } from "@/lib/nowpayments"
+import { v4 as uuidv4 } from "uuid"
+import { z } from "zod"
+import { TicketStockModel } from "@/models/ticketStock"
+import { PaymentModel } from "@/models/payment"
+import { sendConfirmationEmail } from "@/utils/emails"
+import clientPromise from "@/lib/mongodb"
 
-export async function POST(request: NextRequest) {
+const PurchaseRequestSchema = z.object({
+  ticketType: z.string(),
+  quantity: z.number().min(1),
+  email: z.string().email(),
+})
+
+export async function POST(req: NextRequest) {
   try {
-    await connectToDatabase()
+    const body = await req.json()
+    const result = PurchaseRequestSchema.safeParse(body)
 
-    const body = await request.json()
-    const { ticketType, quantity, customerInfo, currency } = body
-
-    console.log("Purchase request:", { ticketType, quantity, customerInfo, currency })
-
-    // Validate input
-    if (!ticketType || !quantity || !customerInfo || !currency) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    if (!result.success) {
+      return NextResponse.json({ error: result.error.message }, { status: 400 })
     }
 
-    // Check and reserve stock
-    const stockResult = await TicketStockModel.reserveTickets(ticketType, quantity)
-    if (!stockResult.success) {
-      return NextResponse.json({ error: stockResult.error }, { status: 400 })
+    const { ticketType, quantity, email } = result.data
+
+    // Generate a unique order ID
+    const orderId = uuidv4()
+
+    // After validating the request, add reservation logic:
+    const reservationExpiry = new Date(Date.now() + 15 * 60 * 1000) // 15 minutes
+
+    // Check availability and reserve tickets
+    const canReserve = await TicketStockModel.reserveTickets(
+      ticketType,
+      quantity,
+      reservationExpiry,
+      orderId,
+      undefined, // paymentId will be added after payment creation
+    )
+
+    if (!canReserve) {
+      return NextResponse.json({ error: "Tickets are no longer available" }, { status: 400 })
     }
 
-    const reservationId = stockResult.reservationId
+    // Create a payment intent
+    const payment = await PaymentModel.createPaymentIntent(quantity, ticketType, orderId)
 
-    try {
-      // Get ticket price
-      const ticketPrices = {
-        "1-day": 75,
-        "3-day": 299,
-        vip: 999,
-      }
+    // Update reservation with payment ID
+    const reservationCollection = await (await clientPromise).db("kaspa_birthday").collection("ticket_reservations")
 
-      const ticketPrice = ticketPrices[ticketType as keyof typeof ticketPrices]
-      if (!ticketPrice) {
-        throw new Error("Invalid ticket type")
-      }
+    await reservationCollection.updateOne({ orderId, status: "active" }, { $set: { paymentId: payment.payment_id } })
 
-      const totalAmount = ticketPrice * quantity
+    // Send confirmation email
+    await sendConfirmationEmail(email, quantity, ticketType, payment.client_secret, orderId)
 
-      // Create NOWPayments payment
-      const nowPayments = new NOWPaymentsAPI()
-      const paymentData = {
-        price_amount: totalAmount,
-        price_currency: "USD",
-        pay_currency: currency.toLowerCase(),
-        order_id: `ticket-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        order_description: `${quantity}x ${ticketType} ticket(s) for Kaspa Birthday Event`,
-        ipn_callback_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/nowpayments/ipn`,
-        success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/ticket-success`,
-        cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/`,
-      }
-
-      console.log("Creating NOWPayments payment:", paymentData)
-      const payment = await nowPayments.createPayment(paymentData)
-      console.log("NOWPayments response:", payment)
-
-      if (!payment.payment_id) {
-        throw new Error("Failed to create payment")
-      }
-
-      // Calculate expiration time (30 minutes from now)
-      const expiresAt = new Date(Date.now() + 30 * 60 * 1000)
-
-      // Save ticket order to database
-      const ticketOrder = new KaspaBirthdayTicketsModel({
-        orderId: paymentData.order_id,
-        paymentId: payment.payment_id,
-        customerName: customerInfo.name,
-        customerEmail: customerInfo.email,
-        ticketType,
-        quantity,
-        totalAmount,
-        currency: currency.toLowerCase(),
-        paymentStatus: "waiting",
-        payAddress: payment.pay_address,
-        payAmount: payment.pay_amount,
-        payCurrency: payment.pay_currency,
-        reservationId,
-        expiresAt,
-        createdAt: new Date(),
-      })
-
-      await ticketOrder.save()
-      console.log("Ticket order saved:", ticketOrder.orderId)
-
-      return NextResponse.json({
-        success: true,
-        order: {
-          orderId: paymentData.order_id,
-          paymentId: payment.payment_id,
-          payAddress: payment.pay_address,
-          payAmount: payment.pay_amount,
-          payCurrency: payment.pay_currency,
-          paymentStatus: "waiting",
-          expiresAt: expiresAt.toISOString(),
-        },
-      })
-    } catch (paymentError) {
-      console.error("Payment creation failed, releasing reservation:", paymentError)
-      // Release the reservation if payment creation fails
-      await TicketStockModel.releaseReservation(reservationId)
-      throw paymentError
-    }
-  } catch (error) {
-    console.error("Purchase error:", error)
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Purchase failed" }, { status: 500 })
+    return NextResponse.json({ clientSecret: payment.client_secret, orderId }, { status: 200 })
+  } catch (error: any) {
+    console.error("Error in purchase route:", error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

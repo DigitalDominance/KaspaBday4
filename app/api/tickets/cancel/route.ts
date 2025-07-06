@@ -1,45 +1,41 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { connectToDatabase } from "@/lib/mongodb"
-import { KaspaBirthdayTicketsModel } from "@/lib/models/KaspaBirthdayTickets"
 import { TicketStockModel } from "@/lib/models/TicketStock"
+import clientPromise from "@/lib/mongodb"
 
 export async function POST(request: NextRequest) {
   try {
-    await connectToDatabase()
-
-    const body = await request.json()
-    const { paymentId } = body
+    const { paymentId } = await request.json()
 
     if (!paymentId) {
       return NextResponse.json({ error: "Payment ID is required" }, { status: 400 })
     }
 
-    // Find the ticket order
-    const ticketOrder = await KaspaBirthdayTicketsModel.findOne({ paymentId })
-    if (!ticketOrder) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 })
-    }
+    // Find the ticket record
+    const client = await clientPromise
+    const db = client.db("kaspa_birthday")
+    const ticketsCollection = db.collection("kaspa_birthday_tickets")
 
-    // Only allow cancellation if payment is still waiting
-    if (ticketOrder.paymentStatus !== "waiting") {
-      return NextResponse.json({ error: "Cannot cancel this payment" }, { status: 400 })
-    }
+    const ticket = await ticketsCollection.findOne({ paymentId })
 
-    // Update order status
-    ticketOrder.paymentStatus = "cancelled"
-    ticketOrder.updatedAt = new Date()
-    await ticketOrder.save()
+    if (!ticket) {
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 })
+    }
 
     // Release the reservation
-    if (ticketOrder.reservationId) {
-      await TicketStockModel.releaseReservation(ticketOrder.reservationId)
-      console.log("Released reservation:", ticketOrder.reservationId)
-    }
+    await TicketStockModel.releaseReservation(ticket.ticketType, ticket.quantity, ticket.orderId)
 
-    return NextResponse.json({
-      success: true,
-      message: "Payment cancelled successfully",
-    })
+    // Update ticket status
+    await ticketsCollection.updateOne(
+      { paymentId },
+      {
+        $set: {
+          paymentStatus: "cancelled",
+          updatedAt: new Date(),
+        },
+      },
+    )
+
+    return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Cancel error:", error)
     return NextResponse.json({ error: "Failed to cancel payment" }, { status: 500 })

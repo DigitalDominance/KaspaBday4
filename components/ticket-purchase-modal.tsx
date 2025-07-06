@@ -14,7 +14,6 @@ import { Space_Grotesk } from "next/font/google"
 import { cn } from "@/lib/utils"
 import { PaymentStatusTracker } from "@/components/payment-status-tracker"
 import { PaymentStorage } from "@/lib/payment-storage"
-import Image from "next/image"
 
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"] })
 
@@ -33,7 +32,6 @@ interface PaymentInfo {
   payCurrency: string
   paymentStatus: string
   orderId: string
-  expiresAt?: string
 }
 
 export function TicketPurchaseModal({
@@ -55,6 +53,7 @@ export function TicketPurchaseModal({
   const [selectedCurrency, setSelectedCurrency] = useState("")
   const [quantity, setQuantity] = useState(1)
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
+  const [copied, setCopied] = useState(false)
 
   // Check for existing pending payments when modal opens
   useEffect(() => {
@@ -86,7 +85,6 @@ export function TicketPurchaseModal({
         payCurrency: latestPayment.payCurrency,
         paymentStatus: latestPayment.paymentStatus,
         orderId: latestPayment.orderId,
-        expiresAt: latestPayment.expiresAt,
       })
       setStep(3)
     }
@@ -96,16 +94,20 @@ export function TicketPurchaseModal({
     try {
       const response = await fetch("/api/nowpayments/currencies")
       const data = await response.json()
-      if (data.currencies) {
-        // Sort currencies to put KAS first
-        const sortedCurrencies = data.currencies.sort((a: string, b: string) => {
-          if (a.toLowerCase() === "kas") return -1
-          if (b.toLowerCase() === "kas") return 1
-          return a.localeCompare(b)
-        })
-        setCurrencies(sortedCurrencies)
-        setFilteredCurrencies(sortedCurrencies)
+      const allCurrencies = data.currencies || []
+
+      // Prioritize KAS and add it first if it exists
+      const kasIndex = allCurrencies.findIndex((currency: string) => currency.toLowerCase() === "kas")
+      const sortedCurrencies = [...allCurrencies]
+
+      if (kasIndex > -1) {
+        // Remove KAS from its current position and add it to the front
+        sortedCurrencies.splice(kasIndex, 1)
+        sortedCurrencies.unshift("kas")
       }
+
+      setCurrencies(sortedCurrencies)
+      setFilteredCurrencies(sortedCurrencies)
     } catch (error) {
       console.error("Failed to fetch currencies:", error)
     }
@@ -157,7 +159,6 @@ export function TicketPurchaseModal({
           payAmount: payment.payAmount,
           payCurrency: payment.payCurrency,
           paymentStatus: payment.paymentStatus,
-          expiresAt: payment.expiresAt,
           createdAt: new Date().toISOString(),
         })
 
@@ -176,6 +177,16 @@ export function TicketPurchaseModal({
   const handlePaymentStatusChange = (status: string) => {
     if (paymentInfo) {
       setPaymentInfo((prev) => (prev ? { ...prev, paymentStatus: status } : null))
+    }
+  }
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      console.error("Failed to copy:", error)
     }
   }
 
@@ -203,27 +214,6 @@ export function TicketPurchaseModal({
       setQuantity(1)
     }
     onClose()
-  }
-
-  const getCurrencyDisplay = (currency: string) => {
-    if (currency.toLowerCase() === "kas") {
-      return (
-        <div className="flex items-center gap-3">
-          <Image src="/kaspa-logo.webp" alt="Kaspa" width={24} height={24} className="rounded-full" />
-          <div>
-            <div className="font-medium text-sm">KAS</div>
-            <div className="text-xs text-muted-foreground">Kaspa</div>
-          </div>
-        </div>
-      )
-    }
-
-    return (
-      <div>
-        <div className="font-medium text-sm">{currency.toUpperCase()}</div>
-        <div className="text-xs text-muted-foreground">{currency}</div>
-      </div>
-    )
   }
 
   return (
@@ -387,13 +377,21 @@ export function TicketPurchaseModal({
                             key={currency}
                             onClick={() => setSelectedCurrency(currency)}
                             className={cn(
-                              "p-3 rounded-lg border text-left transition-all duration-200 hover:scale-105",
+                              "p-3 rounded-lg border text-left transition-all duration-200 hover:scale-105 flex items-center gap-3",
                               selectedCurrency === currency
                                 ? "border-purple-500 bg-gradient-to-r from-purple-500/10 to-pink-500/10"
                                 : "border-border hover:border-purple-500/50",
                             )}
                           >
-                            {getCurrencyDisplay(currency)}
+                            {currency.toLowerCase() === "kas" && (
+                              <img src="/kaspa-logo.webp" alt="Kaspa" className="w-8 h-8 rounded-full" />
+                            )}
+                            <div className="flex-1">
+                              <div className="font-medium text-sm">{currency.toUpperCase()}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {currency.toLowerCase() === "kas" ? "Kaspa" : currency}
+                              </div>
+                            </div>
                           </button>
                         ))}
                       </div>

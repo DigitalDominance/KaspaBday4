@@ -1,192 +1,278 @@
-import mongoose from "mongoose"
+import clientPromise from "@/lib/mongodb"
+import type { ObjectId } from "mongodb"
 
-const TicketStockSchema = new mongoose.Schema({
-  ticketType: {
-    type: String,
-    required: true,
-    enum: ["1-day", "3-day", "vip"],
-  },
-  totalStock: {
-    type: Number,
-    required: true,
-  },
-  sold: {
-    type: Number,
-    default: 0,
-  },
-  reserved: {
-    type: Number,
-    default: 0,
-  },
-  reservations: [
-    {
-      reservationId: String,
-      quantity: Number,
-      expiresAt: Date,
-      createdAt: { type: Date, default: Date.now },
-    },
-  ],
-  updatedAt: {
-    type: Date,
-    default: Date.now,
-  },
-})
-
-TicketStockSchema.methods.getAvailable = function () {
-  return this.totalStock - this.sold - this.reserved
+export interface TicketStockRecord {
+  _id?: ObjectId
+  ticketType: string
+  maxQuantity: number
+  soldQuantity: number
+  reservedQuantity: number
+  availableQuantity: number
+  lastUpdated: Date
+  createdAt: Date
 }
 
-TicketStockSchema.statics.reserveTickets = async function (ticketType: string, quantity: number) {
-  const session = await mongoose.startSession()
-  session.startTransaction()
+export interface ReservationRecord {
+  _id?: ObjectId
+  ticketType: string
+  quantity: number
+  orderId: string
+  paymentId?: string
+  expiresAt: Date
+  createdAt: Date
+  status: "active" | "confirmed" | "expired" | "cancelled"
+}
 
-  try {
-    // Clean up expired reservations first
-    await this.cleanupExpiredReservations(ticketType)
+export class TicketStockModel {
+  private static stockCollectionName = "ticket_stock"
+  private static reservationCollectionName = "ticket_reservations"
 
-    const stock = await this.findOne({ ticketType }).session(session)
-    if (!stock) {
-      throw new Error("Ticket type not found")
-    }
-
-    const available = stock.getAvailable()
-    if (available < quantity) {
-      throw new Error(`Only ${available} tickets available`)
-    }
-
-    // Create reservation
-    const reservationId = `res_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000) // 30 minutes
-
-    stock.reserved += quantity
-    stock.reservations.push({
-      reservationId,
-      quantity,
-      expiresAt,
-    })
-    stock.updatedAt = new Date()
-
-    await stock.save({ session })
-    await session.commitTransaction()
-
-    return {
-      success: true,
-      reservationId,
-      expiresAt,
-    }
-  } catch (error) {
-    await session.abortTransaction()
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Reservation failed",
-    }
-  } finally {
-    session.endSession()
+  static async getStockCollection() {
+    const client = await clientPromise
+    const db = client.db("kaspa_birthday")
+    return db.collection<TicketStockRecord>(this.stockCollectionName)
   }
-}
 
-TicketStockSchema.statics.releaseReservation = async function (reservationId: string) {
-  try {
-    const stock = await this.findOne({
-      "reservations.reservationId": reservationId,
-    })
-
-    if (!stock) {
-      console.log("Reservation not found:", reservationId)
-      return { success: false, error: "Reservation not found" }
-    }
-
-    const reservation = stock.reservations.find((r: any) => r.reservationId === reservationId)
-    if (!reservation) {
-      return { success: false, error: "Reservation not found" }
-    }
-
-    // Remove reservation and decrease reserved count
-    stock.reserved -= reservation.quantity
-    stock.reservations = stock.reservations.filter((r: any) => r.reservationId !== reservationId)
-    stock.updatedAt = new Date()
-
-    await stock.save()
-    console.log(`Released ${reservation.quantity} tickets for ${stock.ticketType}`)
-
-    return { success: true }
-  } catch (error) {
-    console.error("Error releasing reservation:", error)
-    return { success: false, error: "Failed to release reservation" }
+  static async getReservationCollection() {
+    const client = await clientPromise
+    const db = client.db("kaspa_birthday")
+    return db.collection<ReservationRecord>(this.reservationCollectionName)
   }
-}
 
-TicketStockSchema.statics.confirmSale = async function (reservationId: string) {
-  try {
-    const stock = await this.findOne({
-      "reservations.reservationId": reservationId,
-    })
+  // Initialize stock for all ticket types
+  static async initializeStock() {
+    const collection = await this.getStockCollection()
 
-    if (!stock) {
-      return { success: false, error: "Reservation not found" }
-    }
+    const ticketTypes = [
+      { ticketType: "1-day", maxQuantity: 50 },
+      { ticketType: "2-day", maxQuantity: 30 },
+      { ticketType: "3-day", maxQuantity: 20 },
+      { ticketType: "vip", maxQuantity: 10 },
+    ]
 
-    const reservation = stock.reservations.find((r: any) => r.reservationId === reservationId)
-    if (!reservation) {
-      return { success: false, error: "Reservation not found" }
-    }
+    for (const ticket of ticketTypes) {
+      const existing = await collection.findOne({ ticketType: ticket.ticketType })
 
-    // Move from reserved to sold
-    stock.reserved -= reservation.quantity
-    stock.sold += reservation.quantity
-    stock.reservations = stock.reservations.filter((r: any) => r.reservationId !== reservationId)
-    stock.updatedAt = new Date()
-
-    await stock.save()
-    console.log(`Confirmed sale of ${reservation.quantity} tickets for ${stock.ticketType}`)
-
-    return { success: true }
-  } catch (error) {
-    console.error("Error confirming sale:", error)
-    return { success: false, error: "Failed to confirm sale" }
-  }
-}
-
-TicketStockSchema.statics.cleanupExpiredReservations = async function (ticketType?: string) {
-  try {
-    const query = ticketType ? { ticketType } : {}
-    const stocks = await this.find(query)
-
-    for (const stock of stocks) {
-      const now = new Date()
-      const expiredReservations = stock.reservations.filter((r: any) => r.expiresAt < now)
-
-      if (expiredReservations.length > 0) {
-        const expiredQuantity = expiredReservations.reduce((sum: number, r: any) => sum + r.quantity, 0)
-
-        stock.reserved -= expiredQuantity
-        stock.reservations = stock.reservations.filter((r: any) => r.expiresAt >= now)
-        stock.updatedAt = new Date()
-
-        await stock.save()
-        console.log(`Cleaned up ${expiredReservations.length} expired reservations for ${stock.ticketType}`)
+      if (!existing) {
+        await collection.insertOne({
+          ticketType: ticket.ticketType,
+          maxQuantity: ticket.maxQuantity,
+          soldQuantity: 0,
+          reservedQuantity: 0,
+          availableQuantity: ticket.maxQuantity,
+          lastUpdated: new Date(),
+          createdAt: new Date(),
+        })
+        console.log(`✅ Initialized stock for ${ticket.ticketType}: ${ticket.maxQuantity} tickets`)
       }
     }
+  }
 
-    return { success: true }
-  } catch (error) {
-    console.error("Error cleaning up expired reservations:", error)
-    return { success: false, error: "Cleanup failed" }
+  // Clean up expired reservations
+  static async cleanupExpiredReservations() {
+    const reservationCollection = await this.getReservationCollection()
+    const stockCollection = await this.getStockCollection()
+
+    // Find expired reservations
+    const expiredReservations = await reservationCollection
+      .find({
+        expiresAt: { $lt: new Date() },
+        status: "active",
+      })
+      .toArray()
+
+    for (const reservation of expiredReservations) {
+      // Update reservation status
+      await reservationCollection.updateOne(
+        { _id: reservation._id },
+        {
+          $set: {
+            status: "expired",
+          },
+        },
+      )
+
+      // Release the reserved quantity
+      await stockCollection.updateOne(
+        { ticketType: reservation.ticketType },
+        {
+          $inc: {
+            reservedQuantity: -reservation.quantity,
+            availableQuantity: reservation.quantity,
+          },
+          $set: {
+            lastUpdated: new Date(),
+          },
+        },
+      )
+
+      console.log(`🔄 Released expired reservation: ${reservation.quantity}x ${reservation.ticketType}`)
+    }
+
+    return expiredReservations.length
+  }
+
+  // Get stock for a specific ticket type
+  static async getStock(ticketType: string): Promise<TicketStockRecord | null> {
+    // Clean up expired reservations first
+    await this.cleanupExpiredReservations()
+
+    const collection = await this.getStockCollection()
+    return await collection.findOne({ ticketType })
+  }
+
+  // Get all stock records
+  static async getAllStock(): Promise<TicketStockRecord[]> {
+    // Clean up expired reservations first
+    await this.cleanupExpiredReservations()
+
+    const collection = await this.getStockCollection()
+    return await collection.find({}).toArray()
+  }
+
+  // Reserve tickets (when payment is created)
+  static async reserveTickets(
+    ticketType: string,
+    quantity: number,
+    expiresAt: Date,
+    orderId: string,
+    paymentId?: string,
+  ): Promise<boolean> {
+    const stockCollection = await this.getStockCollection()
+    const reservationCollection = await this.getReservationCollection()
+
+    // Clean up expired reservations first
+    await this.cleanupExpiredReservations()
+
+    // Check if we have enough available tickets
+    const stock = await stockCollection.findOne({ ticketType })
+    if (!stock || stock.availableQuantity < quantity) {
+      return false
+    }
+
+    // Create reservation record
+    await reservationCollection.insertOne({
+      ticketType,
+      quantity,
+      orderId,
+      paymentId,
+      expiresAt,
+      createdAt: new Date(),
+      status: "active",
+    })
+
+    // Update stock quantities
+    const result = await stockCollection.updateOne(
+      { ticketType },
+      {
+        $inc: {
+          reservedQuantity: quantity,
+          availableQuantity: -quantity,
+        },
+        $set: {
+          lastUpdated: new Date(),
+        },
+      },
+    )
+
+    console.log(`🔒 Reserved ${quantity}x ${ticketType} tickets until ${expiresAt.toISOString()}`)
+    return result.modifiedCount > 0
+  }
+
+  // Confirm ticket sale (when payment is finished)
+  static async confirmSale(ticketType: string, quantity: number, orderId: string): Promise<boolean> {
+    const stockCollection = await this.getStockCollection()
+    const reservationCollection = await this.getReservationCollection()
+
+    // Find and update the reservation
+    await reservationCollection.updateOne(
+      { orderId, status: "active" },
+      {
+        $set: {
+          status: "confirmed",
+        },
+      },
+    )
+
+    // Update stock - move from reserved to sold
+    const result = await stockCollection.updateOne(
+      { ticketType },
+      {
+        $inc: {
+          reservedQuantity: -quantity,
+          soldQuantity: quantity,
+        },
+        $set: {
+          lastUpdated: new Date(),
+        },
+      },
+    )
+
+    console.log(`✅ Confirmed sale: ${quantity}x ${ticketType} tickets`)
+    return result.modifiedCount > 0
+  }
+
+  // Release reserved tickets (when payment fails/expires/cancelled)
+  static async releaseReservation(ticketType: string, quantity: number, orderId?: string): Promise<boolean> {
+    const stockCollection = await this.getStockCollection()
+    const reservationCollection = await this.getReservationCollection()
+
+    // Update reservation status if orderId provided
+    if (orderId) {
+      await reservationCollection.updateOne(
+        { orderId, status: "active" },
+        {
+          $set: {
+            status: "cancelled",
+          },
+        },
+      )
+    }
+
+    // Release the reserved quantity
+    const result = await stockCollection.updateOne(
+      { ticketType },
+      {
+        $inc: {
+          reservedQuantity: -quantity,
+          availableQuantity: quantity,
+        },
+        $set: {
+          lastUpdated: new Date(),
+        },
+      },
+    )
+
+    console.log(`🔄 Released reservation: ${quantity}x ${ticketType} tickets`)
+    return result.modifiedCount > 0
+  }
+
+  // Check if tickets are available
+  static async isAvailable(ticketType: string, quantity: number): Promise<boolean> {
+    // Clean up expired reservations first
+    await this.cleanupExpiredReservations()
+
+    const stock = await this.getStock(ticketType)
+    return stock ? stock.availableQuantity >= quantity : false
+  }
+
+  // Get formatted stock info for frontend
+  static async getStockInfo() {
+    const allStock = await this.getAllStock()
+
+    return allStock.map((stock) => ({
+      type: stock.ticketType,
+      available: stock.availableQuantity,
+      reserved: stock.reservedQuantity,
+      total: stock.maxQuantity,
+      sold: stock.soldQuantity,
+      soldOut: stock.availableQuantity === 0,
+    }))
+  }
+
+  // Get reservation info for a specific order
+  static async getReservationInfo(orderId: string): Promise<ReservationRecord | null> {
+    const collection = await this.getReservationCollection()
+    return await collection.findOne({ orderId, status: "active" })
   }
 }
-
-TicketStockSchema.statics.getStockInfo = async function () {
-  await this.cleanupExpiredReservations()
-
-  const stocks = await this.find({})
-  return stocks.map((stock) => ({
-    ticketType: stock.ticketType,
-    totalStock: stock.totalStock,
-    sold: stock.sold,
-    reserved: stock.reserved,
-    available: stock.getAvailable(),
-    updatedAt: stock.updatedAt,
-  }))
-}
-
-export const TicketStockModel = mongoose.models.TicketStock || mongoose.model("TicketStock", TicketStockSchema)

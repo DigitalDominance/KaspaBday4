@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server"
-import { connectToDatabase } from "@/lib/mongodb"
 import { TicketStockModel } from "@/lib/models/TicketStock"
 
 export async function GET() {
   try {
-    await connectToDatabase()
+    // Initialize stock if it doesn't exist
+    await TicketStockModel.initializeStock()
 
+    // Clean up expired reservations first
+    await TicketStockModel.cleanupExpiredReservations()
+
+    // Get current stock info
     const stockInfo = await TicketStockModel.getStockInfo()
 
     return NextResponse.json({

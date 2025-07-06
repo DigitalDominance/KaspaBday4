@@ -14,8 +14,15 @@ export async function GET(request: Request, { params }: { params: { paymentId: s
 
     const nowPayments = new NOWPaymentsAPI()
 
-    // Get real-time status from NOWPayments
-    const paymentStatus = await nowPayments.getPaymentStatus(paymentId)
+    // Try to get real-time status from NOWPayments using the payments list endpoint (more reliable)
+    let paymentStatus
+    try {
+      paymentStatus = await nowPayments.getPaymentStatusFromList(paymentId)
+    } catch (listError) {
+      console.warn(`⚠️ Failed to get status from payments list, trying individual endpoint:`, listError)
+      // Fallback to individual payment endpoint
+      paymentStatus = await nowPayments.getPaymentStatus(paymentId)
+    }
 
     if (paymentStatus.error) {
       console.error(`❌ NOWPayments API error:`, paymentStatus.error)
@@ -88,6 +95,23 @@ export async function GET(request: Request, { params }: { params: { paymentId: s
           console.error(`❌ Error generating/sending ticket for ${paymentId}:`, emailError)
         }
       }
+
+      // Send payment confirmation email for confirmed status (if not sent yet)
+      if (
+        (paymentStatus.payment_status === "confirmed" || paymentStatus.payment_status === "partially_paid") &&
+        !ticket.paymentConfirmationEmailSent
+      ) {
+        try {
+          const { EmailService } = await import("@/lib/email")
+          await EmailService.sendPaymentConfirmationEmail(ticket)
+          await KaspaBirthdayTicketsModel.updatePaymentStatus(paymentId, {
+            paymentConfirmationEmailSent: true,
+          })
+          console.log(`✅ Payment confirmation email sent for ${paymentId}`)
+        } catch (emailError) {
+          console.error(`❌ Failed to send payment confirmation email:`, emailError)
+        }
+      }
     }
 
     // Return the real-time status from NOWPayments
@@ -106,6 +130,9 @@ export async function GET(request: Request, { params }: { params: { paymentId: s
       updated_at: paymentStatus.updated_at,
       outcome_amount: paymentStatus.outcome_amount,
       outcome_currency: paymentStatus.outcome_currency,
+      // Add source info for debugging
+      _source: "payments_list_endpoint",
+      _fetched_at: new Date().toISOString(),
     })
   } catch (error) {
     console.error("❌ Payment status check error:", error)

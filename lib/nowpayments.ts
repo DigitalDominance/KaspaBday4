@@ -95,6 +95,79 @@ export class NOWPaymentsAPI {
     return result
   }
 
+  // NEW: Get payment status using the payments list endpoint (more reliable)
+  async getPaymentStatusFromList(paymentId: string) {
+    console.log(`🔍 Fetching payment status from list for ID: ${paymentId}`)
+
+    // Get recent payments and find our specific payment
+    const response = await fetch(`${NOWPAYMENTS_API_URL}/payment/?limit=100&page=0&sortBy=updated_at&orderBy=desc`, {
+      headers: this.headers,
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error(`❌ NOWPayments payments list API error (${response.status}):`, errorText)
+      throw new Error(`NOWPayments payments list API error: ${response.status} - ${errorText}`)
+    }
+
+    const result = await response.json()
+    console.log(`📊 NOWPayments payments list response: ${result.data?.length || 0} payments found`)
+
+    // Find our specific payment in the list
+    const payment = result.data?.find((p: any) => p.payment_id.toString() === paymentId.toString())
+
+    if (!payment) {
+      console.error(`❌ Payment ${paymentId} not found in payments list`)
+      throw new Error(`Payment ${paymentId} not found`)
+    }
+
+    console.log(`✅ Found payment ${paymentId} in list:`, {
+      payment_id: payment.payment_id,
+      payment_status: payment.payment_status,
+      actually_paid: payment.actually_paid,
+      pay_amount: payment.pay_amount,
+      created_at: payment.created_at,
+      updated_at: payment.updated_at,
+    })
+
+    return payment
+  }
+
+  // NEW: Get payment by order ID (useful for tracking)
+  async getPaymentByOrderId(orderId: string) {
+    console.log(`🔍 Fetching payment by order ID: ${orderId}`)
+
+    // Search through recent payments for our order
+    const response = await fetch(`${NOWPAYMENTS_API_URL}/payment/?limit=100&page=0&sortBy=updated_at&orderBy=desc`, {
+      headers: this.headers,
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error(`❌ NOWPayments payments list API error (${response.status}):`, errorText)
+      throw new Error(`NOWPayments payments list API error: ${response.status} - ${errorText}`)
+    }
+
+    const result = await response.json()
+
+    // Find payment by order_id
+    const payment = result.data?.find((p: any) => p.order_id === orderId)
+
+    if (!payment) {
+      console.error(`❌ Payment with order ID ${orderId} not found`)
+      throw new Error(`Payment with order ID ${orderId} not found`)
+    }
+
+    console.log(`✅ Found payment for order ${orderId}:`, {
+      payment_id: payment.payment_id,
+      payment_status: payment.payment_status,
+      order_id: payment.order_id,
+      updated_at: payment.updated_at,
+    })
+
+    return payment
+  }
+
   verifyIPN(signature: string, body: any): boolean {
     const crypto = require("crypto")
 

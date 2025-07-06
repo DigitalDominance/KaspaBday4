@@ -1,61 +1,119 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { v4 as uuidv4 } from "uuid"
-import { z } from "zod"
-import { TicketStockModel } from "@/models/ticketStock"
-import { PaymentModel } from "@/models/payment"
-import { sendConfirmationEmail } from "@/utils/emails"
-import clientPromise from "@/lib/mongodb"
+import { NextResponse } from "next/server"
+import { NOWPaymentsAPI } from "@/lib/nowpayments"
+import { TicketStockModel } from "@/lib/models/TicketStock"
+import { KaspaBirthdayTicketsModel } from "@/lib/models/KaspaBirthdayTickets"
 
-const PurchaseRequestSchema = z.object({
-  ticketType: z.string(),
-  quantity: z.number().min(1),
-  email: z.string().email(),
-})
+const TICKET_PRICES = {
+  "1-day": { price: 75, name: "1-Day Pass" },
+  "2-day": { price: 125, name: "2-Day Pass" },
+  "3-day": { price: 175, name: "3-Day Pass" },
+  vip: { price: 299, name: "VIP Pass" },
+}
 
-export async function POST(req: NextRequest) {
+// 30 minutes in milliseconds
+const RESERVATION_TIMEOUT = 30 * 60 * 1000
+
+export async function POST(request: Request) {
   try {
-    const body = await req.json()
-    const result = PurchaseRequestSchema.safeParse(body)
+    const body = await request.json()
+    const { ticketType, quantity, customerInfo, currency } = body
 
-    if (!result.success) {
-      return NextResponse.json({ error: result.error.message }, { status: 400 })
+    // Validate input
+    if (!ticketType || !quantity || !customerInfo?.name || !customerInfo?.email || !currency) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    const { ticketType, quantity, email } = result.data
-
-    // Generate a unique order ID
-    const orderId = uuidv4()
-
-    // After validating the request, add reservation logic:
-    const reservationExpiry = new Date(Date.now() + 15 * 60 * 1000) // 15 minutes
-
-    // Check availability and reserve tickets
-    const canReserve = await TicketStockModel.reserveTickets(
-      ticketType,
-      quantity,
-      reservationExpiry,
-      orderId,
-      undefined, // paymentId will be added after payment creation
-    )
-
-    if (!canReserve) {
-      return NextResponse.json({ error: "Tickets are no longer available" }, { status: 400 })
+    // Check ticket availability in stock system
+    const isAvailable = await TicketStockModel.isAvailable(ticketType, quantity)
+    if (!isAvailable) {
+      return NextResponse.json({ error: "Tickets not available" }, { status: 400 })
     }
 
-    // Create a payment intent
-    const payment = await PaymentModel.createPaymentIntent(quantity, ticketType, orderId)
+    // Get ticket info
+    const ticketInfo = TICKET_PRICES[ticketType as keyof typeof TICKET_PRICES]
+    if (!ticketInfo) {
+      return NextResponse.json({ error: "Invalid ticket type" }, { status: 400 })
+    }
 
-    // Update reservation with payment ID
-    const reservationCollection = await (await clientPromise).db("kaspa_birthday").collection("ticket_reservations")
+    const totalAmount = ticketInfo.price * quantity
 
-    await reservationCollection.updateOne({ orderId, status: "active" }, { $set: { paymentId: payment.payment_id } })
+    // Create order ID
+    const orderId = `KASPA-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
-    // Send confirmation email
-    await sendConfirmationEmail(email, quantity, ticketType, payment.client_secret, orderId)
+    // Calculate expiration time (30 minutes from now)
+    const expiresAt = new Date(Date.now() + RESERVATION_TIMEOUT)
 
-    return NextResponse.json({ clientSecret: payment.client_secret, orderId }, { status: 200 })
-  } catch (error: any) {
-    console.error("Error in purchase route:", error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    try {
+      // Create NOWPayments payment
+      const nowPayments = new NOWPaymentsAPI()
+
+      const paymentData = {
+        price_amount: totalAmount,
+        price_currency: "usd",
+        pay_currency: currency,
+        order_id: orderId,
+        order_description: `Kaspa 4th Birthday - ${quantity}x ${ticketInfo.name} for ${customerInfo.name}`,
+        ipn_callback_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/nowpayments/ipn`,
+        success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/ticket-success?order=${orderId}`,
+        cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/tickets`,
+      }
+
+      const payment = await nowPayments.createPayment(paymentData)
+
+      if (payment.error) {
+        return NextResponse.json({ error: payment.error }, { status: 400 })
+      }
+
+      // Reserve tickets in stock system with expiration
+      const reserved = await TicketStockModel.reserveTickets(
+        ticketType,
+        quantity,
+        expiresAt,
+        orderId,
+        payment.payment_id,
+      )
+      if (!reserved) {
+        return NextResponse.json({ error: "Failed to reserve tickets" }, { status: 400 })
+      }
+
+      // Store ticket order in database with expiration
+      const ticketRecord = await KaspaBirthdayTicketsModel.create({
+        orderId,
+        customerName: customerInfo.name,
+        customerEmail: customerInfo.email,
+        ticketType,
+        ticketName: ticketInfo.name,
+        quantity,
+        pricePerTicket: ticketInfo.price,
+        totalAmount: totalAmount.toString(),
+        currency,
+        paymentId: payment.payment_id,
+        paymentStatus: payment.payment_status,
+        payAddress: payment.pay_address,
+        payAmount: payment.pay_amount,
+        payCurrency: payment.pay_currency,
+        reservationExpiresAt: expiresAt,
+      })
+
+      return NextResponse.json({
+        success: true,
+        order: {
+          orderId,
+          paymentId: payment.payment_id,
+          payAddress: payment.pay_address,
+          payAmount: payment.pay_amount,
+          payCurrency: payment.pay_currency,
+          paymentStatus: payment.payment_status,
+          expiresAt: expiresAt.toISOString(),
+        },
+        payment: payment,
+      })
+    } catch (error) {
+      console.error("Payment creation error:", error)
+      throw error
+    }
+  } catch (error) {
+    console.error("Purchase error:", error)
+    return NextResponse.json({ error: "Failed to create payment" }, { status: 500 })
   }
 }

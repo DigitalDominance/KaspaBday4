@@ -4,7 +4,7 @@ import { TicketStockModel } from "@/lib/models/TicketStock"
 import { KaspaBirthdayTicketsModel } from "@/lib/models/KaspaBirthdayTickets"
 
 const TICKET_PRICES = {
-  "1-day": { price: 20, name: "1-Day Pass" },
+  "1-day": { price: 75, name: "1-Day Pass" },
   "2-day": { price: 125, name: "2-Day Pass" },
   "3-day": { price: 175, name: "3-Day Pass" },
   vip: { price: 299, name: "VIP Pass" },

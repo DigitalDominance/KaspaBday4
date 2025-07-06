@@ -43,12 +43,6 @@ export async function POST(request: Request) {
     // Calculate expiration time (30 minutes from now)
     const expiresAt = new Date(Date.now() + RESERVATION_TIMEOUT)
 
-    // Reserve tickets in stock system with expiration
-    const reserved = await TicketStockModel.reserveTickets(ticketType, quantity, expiresAt)
-    if (!reserved) {
-      return NextResponse.json({ error: "Failed to reserve tickets" }, { status: 400 })
-    }
-
     try {
       // Create NOWPayments payment
       const nowPayments = new NOWPaymentsAPI()
@@ -67,9 +61,19 @@ export async function POST(request: Request) {
       const payment = await nowPayments.createPayment(paymentData)
 
       if (payment.error) {
-        // Release reservation if payment creation failed
-        await TicketStockModel.releaseReservation(ticketType, quantity)
         return NextResponse.json({ error: payment.error }, { status: 400 })
+      }
+
+      // Reserve tickets in stock system with expiration
+      const reserved = await TicketStockModel.reserveTickets(
+        ticketType,
+        quantity,
+        expiresAt,
+        orderId,
+        payment.payment_id,
+      )
+      if (!reserved) {
+        return NextResponse.json({ error: "Failed to reserve tickets" }, { status: 400 })
       }
 
       // Store ticket order in database with expiration
@@ -105,8 +109,7 @@ export async function POST(request: Request) {
         payment: payment,
       })
     } catch (error) {
-      // Release reservation if anything fails
-      await TicketStockModel.releaseReservation(ticketType, quantity)
+      console.error("Payment creation error:", error)
       throw error
     }
   } catch (error) {

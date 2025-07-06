@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Clock, CheckCircle, AlertCircle, Copy, Loader2, Timer, X } from "lucide-react"
+import { Clock, CheckCircle, AlertCircle, Copy, Loader2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PaymentStorage } from "@/lib/payment-storage"
 
@@ -279,21 +279,36 @@ export function PaymentStatusTracker({ paymentId, onStatusChange, onCancel }: Pa
   }
 
   const statusInfo = getStatusInfo(paymentData.paymentStatus)
+  const isWaiting = paymentData.paymentStatus === "waiting"
+  const showTimer = isWaiting && timeRemaining !== null && timeRemaining > 0
+  const isLowTime = timeRemaining !== null && timeRemaining < 5 * 60 * 1000 // Less than 5 minutes
 
   return (
     <Card className={cn("border-2", statusInfo.borderColor, statusInfo.bgColor)}>
       <CardHeader>
-        <CardTitle className="flex items-center gap-3">
-          <div className={cn("p-2 rounded-full", statusInfo.color, "text-white")}>{statusInfo.icon}</div>
-          <div className="flex-1">
-            <div className={cn("text-lg font-semibold", statusInfo.textColor)}>{statusInfo.title}</div>
-            <div className="text-sm text-muted-foreground">{statusInfo.description}</div>
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={cn("p-2 rounded-full", statusInfo.color, "text-white")}>{statusInfo.icon}</div>
+            <div>
+              <div className={cn("text-lg font-semibold", statusInfo.textColor)}>{statusInfo.title}</div>
+              <div className="text-sm text-muted-foreground">{statusInfo.description}</div>
+            </div>
           </div>
-          {/* Timer Display */}
-          {timeRemaining !== null && timeRemaining > 0 && paymentData.paymentStatus === "waiting" && (
-            <div className="flex items-center gap-2 bg-gradient-to-r from-orange-500/20 to-red-500/20 px-3 py-2 rounded-lg border border-orange-500/30">
-              <Timer className="h-4 w-4 text-orange-400" />
-              <span className="text-sm font-mono text-orange-300">{formatTimeRemaining(timeRemaining)}</span>
+
+          {/* Timer Display - Prominently shown in header */}
+          {showTimer && (
+            <div
+              className={cn(
+                "text-right px-4 py-2 rounded-lg border",
+                isLowTime
+                  ? "bg-red-500/20 border-red-500/50 text-red-300"
+                  : "bg-blue-500/20 border-blue-500/50 text-blue-300",
+              )}
+            >
+              <div className="text-xs text-muted-foreground">Time remaining</div>
+              <div className={cn("text-xl font-mono font-bold", isLowTime && "animate-pulse")}>
+                {formatTimeRemaining(timeRemaining)}
+              </div>
             </div>
           )}
         </CardTitle>

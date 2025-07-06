@@ -59,6 +59,7 @@ export async function GET(request: Request, { params }: { params: { paymentId: s
         payAmount: currentTicket.payAmount,
         payCurrency: currentTicket.payCurrency,
         actuallyPaid: currentTicket.actuallyPaid || 0,
+        expiresAt: currentTicket.reservationExpiresAt?.toISOString(),
         updatedAt: new Date().toISOString(),
       })
     }
@@ -133,12 +134,14 @@ export async function GET(request: Request, { params }: { params: { paymentId: s
 
     // Return updated status with payment details
     return NextResponse.json({
-      paymentId,
+      paymentId: currentTicket.paymentId,
+      orderId: currentTicket.orderId,
       paymentStatus: newStatus,
       payAddress: currentTicket.payAddress || paymentData.pay_address,
       payAmount: currentTicket.payAmount || paymentData.pay_amount,
       payCurrency: currentTicket.payCurrency || paymentData.pay_currency,
       actuallyPaid: paymentData.actually_paid || 0,
+      expiresAt: currentTicket.reservationExpiresAt?.toISOString(),
       updatedAt: new Date().toISOString(),
     })
   } catch (error) {

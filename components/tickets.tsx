@@ -128,32 +128,45 @@ const ticketTypes = [
   },
 ]
 
+interface TicketStock {
+  type: string
+  available: number
+  reserved: number
+  total: number
+  sold: number
+  soldOut: boolean
+}
+
 export function Tickets() {
-  const [ticketStock, setTicketStock] = useState<
-    Record<string, { available: number; total: number; soldOut: boolean }>
-  >({})
+  const [ticketStock, setTicketStock] = useState<Record<string, TicketStock>>({})
   const [selectedTicket, setSelectedTicket] = useState<(typeof ticketTypes)[0] | null>(null)
   const [purchaseModalOpen, setPurchaseModalOpen] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchTicketStock()
+
+    // Update stock every 30 seconds
+    const interval = setInterval(fetchTicketStock, 30000)
+    return () => clearInterval(interval)
   }, [])
 
   const fetchTicketStock = async () => {
     try {
       const response = await fetch("/api/tickets/stock")
-      const stock = await response.json()
-      const stockMap = stock.reduce((acc: any, item: any) => {
-        acc[item.type] = {
-          available: item.available,
-          total: item.total,
-          soldOut: item.soldOut,
-        }
-        return acc
-      }, {})
-      setTicketStock(stockMap)
+      const data = await response.json()
+
+      if (data.success && data.stock) {
+        const stockMap = data.stock.reduce((acc: Record<string, TicketStock>, item: TicketStock) => {
+          acc[item.type] = item
+          return acc
+        }, {})
+        setTicketStock(stockMap)
+      }
     } catch (error) {
       console.error("Failed to fetch ticket stock:", error)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -162,9 +175,14 @@ export function Tickets() {
     setPurchaseModalOpen(true)
   }
 
+  const handlePurchaseComplete = () => {
+    // Refresh stock after purchase
+    fetchTicketStock()
+  }
+
   const getTicketAvailability = (ticketId: string) => {
     const stock = ticketStock[ticketId]
-    if (!stock) return { available: 0, total: 0, soldOut: false }
+    if (!stock) return { available: 0, reserved: 0, total: 0, soldOut: false }
     return stock
   }
 
@@ -281,6 +299,8 @@ export function Tickets() {
                 {ticketTypes.map((ticket, index) => {
                   const availability = getTicketAvailability(ticket.id)
                   const isSoldOut = availability.soldOut
+                  const isLowStock = availability.available <= 5 && availability.available > 0
+                  const showReserved = availability.reserved > 0
 
                   return (
                     <motion.div key={ticket.name} variants={itemVariants} className="relative">
@@ -294,6 +314,13 @@ export function Tickets() {
                       {isSoldOut && (
                         <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-10">
                           <Badge className="bg-red-500 text-white border-0 px-4 py-1">Sold Out</Badge>
+                        </div>
+                      )}
+                      {isLowStock && !isSoldOut && (
+                        <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-10">
+                          <Badge className="bg-orange-500 text-white border-0 px-4 py-1 animate-pulse">
+                            Only {availability.available} Left!
+                          </Badge>
                         </div>
                       )}
                       <Card
@@ -319,8 +346,17 @@ export function Tickets() {
                               </span>
                             )}
                           </div>
-                          <div className="text-xs text-muted-foreground mt-2">
-                            {availability.available} of {availability.total} remaining
+                          <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                            {loading ? (
+                              <div>Loading availability...</div>
+                            ) : (
+                              <>
+                                <div>
+                                  {availability.available} of {availability.total} available
+                                </div>
+                                {showReserved && <div className="text-blue-400">{availability.reserved} reserved</div>}
+                              </>
+                            )}
                           </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -338,7 +374,7 @@ export function Tickets() {
                               spaceGrotesk.className,
                             )}
                             size="lg"
-                            disabled={isSoldOut}
+                            disabled={isSoldOut || loading}
                             onClick={() => handleTicketPurchase(ticket)}
                           >
                             {isSoldOut ? "Sold Out" : `Buy ${ticket.name}`}
@@ -396,6 +432,7 @@ export function Tickets() {
                     <p className="text-foreground">Instant ticket generation after payment</p>
                     <p className="text-foreground">Tickets are transferable but non-refundable</p>
                     <p className="text-foreground">Digital tickets sent via email</p>
+                    <p className="text-foreground">30-minute reservation window</p>
                   </div>
                 </div>
               </div>
@@ -416,6 +453,7 @@ export function Tickets() {
           onClose={() => {
             setPurchaseModalOpen(false)
             setSelectedTicket(null)
+            handlePurchaseComplete()
           }}
           ticketType={selectedTicket.id}
           ticketPrice={selectedTicket.price}

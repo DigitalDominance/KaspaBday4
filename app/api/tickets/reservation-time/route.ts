@@ -10,9 +10,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Payment ID is required" }, { status: 400 })
     }
 
-    const remainingTime = await TicketReservationModel.getRemainingTime(paymentId)
+    const timeInfo = await TicketReservationModel.getRemainingTime(paymentId)
 
-    return NextResponse.json(remainingTime)
+    return NextResponse.json({
+      success: true,
+      ...timeInfo,
+    })
   } catch (error) {
     console.error("Get reservation time error:", error)
     return NextResponse.json({ error: "Failed to get reservation time" }, { status: 500 })

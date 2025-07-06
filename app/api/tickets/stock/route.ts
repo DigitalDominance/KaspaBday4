@@ -7,7 +7,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      data: stock,
+      stock,
     })
   } catch (error) {
     console.error("Error fetching ticket stock:", error)
@@ -16,7 +16,6 @@ export async function GET() {
       {
         success: false,
         error: "Failed to fetch ticket stock",
-        data: [],
       },
       { status: 500 },
     )

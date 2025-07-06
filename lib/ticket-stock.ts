@@ -1,4 +1,4 @@
-import { connectToDatabase } from "@/lib/mongodb"
+import { connectToDatabase } from "./mongodb"
 
 export interface TicketStock {
   ticketType: string
@@ -18,35 +18,40 @@ export async function getTicketStock(): Promise<TicketStock[]> {
   try {
     const { db } = await connectToDatabase()
 
-    // Get all finished payments (completed tickets)
-    const soldTickets = await db.collection("kaspa_birthday_tickets").find({ paymentStatus: "finished" }).toArray()
+    // Get all finished payments grouped by ticket type
+    const soldTickets = await db
+      .collection("kaspa_birthday_tickets")
+      .aggregate([
+        {
+          $match: {
+            paymentStatus: "finished",
+          },
+        },
+        {
+          $group: {
+            _id: "$ticketType",
+            totalSold: { $sum: "$quantity" },
+          },
+        },
+      ])
+      .toArray()
 
-    // Count sold tickets by type
-    const soldCounts: Record<string, number> = {}
-
-    soldTickets.forEach((ticket) => {
-      const ticketType = ticket.ticketName || ticket.ticketType
-      if (ticketType) {
-        soldCounts[ticketType] = (soldCounts[ticketType] || 0) + (ticket.quantity || 1)
-      }
-    })
-
-    // Create stock array
+    // Create stock array for all ticket types
     const stockData: TicketStock[] = Object.entries(TICKET_LIMITS).map(([ticketType, totalAvailable]) => {
-      const sold = soldCounts[ticketType] || 0
-      const remaining = Math.max(0, totalAvailable - sold)
+      const soldData = soldTickets.find((item) => item._id === ticketType)
+      const sold = soldData ? soldData.totalSold : 0
 
       return {
         ticketType,
         totalAvailable,
         sold,
-        remaining,
+        remaining: Math.max(0, totalAvailable - sold),
       }
     })
 
     return stockData
   } catch (error) {
-    console.error("Error fetching ticket stock:", error)
+    console.error("Error getting ticket stock:", error)
     // Return default stock data on error
     return Object.entries(TICKET_LIMITS).map(([ticketType, totalAvailable]) => ({
       ticketType,
@@ -57,7 +62,7 @@ export async function getTicketStock(): Promise<TicketStock[]> {
   }
 }
 
-export async function isTicketAvailable(ticketType: string, quantity = 1): Promise<boolean> {
+export async function checkTicketAvailability(ticketType: string, quantity: number): Promise<boolean> {
   try {
     const stock = await getTicketStock()
     const ticketStock = stock.find((s) => s.ticketType === ticketType)
@@ -69,22 +74,6 @@ export async function isTicketAvailable(ticketType: string, quantity = 1): Promi
     return ticketStock.remaining >= quantity
   } catch (error) {
     console.error("Error checking ticket availability:", error)
-    return false
-  }
-}
-
-export async function reserveTickets(ticketType: string, quantity: number): Promise<boolean> {
-  try {
-    const available = await isTicketAvailable(ticketType, quantity)
-    if (!available) {
-      return false
-    }
-
-    // In a real system, you'd implement proper reservation logic here
-    // For now, we'll just check availability at purchase time
-    return true
-  } catch (error) {
-    console.error("Error reserving tickets:", error)
     return false
   }
 }

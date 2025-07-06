@@ -1,3 +1,5 @@
+import QRCode from "qrcode"
+
 export interface TicketData {
   orderId: string
   customerName: string
@@ -6,73 +8,56 @@ export interface TicketData {
   event: string
   date: string
   venue: string
+  verified: boolean
+  timestamp: number
 }
 
-export function generateTicketQRCode(data: TicketData): string {
-  // Create the data to encode in the QR code
-  const qrData = JSON.stringify({
-    orderId: data.orderId,
-    customerName: data.customerName,
-    ticketType: data.ticketType,
-    quantity: data.quantity,
-    event: data.event,
-    date: data.date,
-    venue: data.venue,
-    verified: true,
-    timestamp: Date.now(),
-  })
-
-  // Generate QR code using qrcode library
-  const QRCode = require("qrcode")
-
+export async function generateQRCodeDataURL(data: TicketData): Promise<string> {
   try {
-    // Generate QR code as SVG string
-    const qrCodeSvg = QRCode.toString(qrData, {
-      type: "svg",
-      width: 200,
+    const qrData = JSON.stringify(data)
+
+    const qrCodeDataURL = await QRCode.toDataURL(qrData, {
+      errorCorrectionLevel: "M",
+      type: "image/png",
+      quality: 0.92,
       margin: 2,
       color: {
         dark: "#000000",
         light: "#FFFFFF",
       },
-      errorCorrectionLevel: "M",
+      width: 256,
     })
 
-    return qrCodeSvg
+    return qrCodeDataURL
   } catch (error) {
     console.error("Error generating QR code:", error)
     throw new Error("Failed to generate QR code")
   }
 }
 
-export async function generateQRCodeDataURL(data: string): Promise<string> {
-  const QRCode = require("qrcode")
-
+export async function generateQRCodeSVG(data: TicketData): Promise<string> {
   try {
-    const qrCodeDataURL = await QRCode.toDataURL(data, {
-      width: 200,
+    const qrData = JSON.stringify(data)
+
+    const qrCodeSVG = await QRCode.toString(qrData, {
+      type: "svg",
+      errorCorrectionLevel: "M",
       margin: 2,
       color: {
         dark: "#000000",
         light: "#FFFFFF",
       },
-      errorCorrectionLevel: "M",
+      width: 256,
     })
 
-    return qrCodeDataURL
+    return qrCodeSVG
   } catch (error) {
-    console.error("Error generating QR code data URL:", error)
-    throw new Error("Failed to generate QR code")
+    console.error("Error generating QR code SVG:", error)
+    throw new Error("Failed to generate QR code SVG")
   }
 }
 
 export function generateTicketText(data: TicketData): string {
-  const ticketTypeDisplay = data.ticketType
-    .replace("-", " ")
-    .split(" ")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ")
-
   return `
 KASPA 4TH BIRTHDAY CELEBRATION
 ================================
@@ -81,7 +66,7 @@ TICKET INFORMATION
 ------------------
 Order ID: ${data.orderId}
 Customer: ${data.customerName}
-Ticket Type: ${ticketTypeDisplay}
+Ticket Type: ${data.ticketType}
 Quantity: ${data.quantity}
 
 EVENT DETAILS
@@ -89,6 +74,10 @@ EVENT DETAILS
 Event: ${data.event}
 Date: ${data.date}
 Venue: ${data.venue}
+
+QR CODE DATA
+------------
+${JSON.stringify(data, null, 2)}
 
 IMPORTANT NOTES
 ---------------
@@ -98,7 +87,7 @@ IMPORTANT NOTES
 • Contact tickets@kaspaevents.xyz for questions
 
 Generated: ${new Date().toLocaleString()}
-Verified: ✓
+Verified: ${data.verified ? "✓" : "✗"}
 
 ================================
 Thank you for celebrating with us!

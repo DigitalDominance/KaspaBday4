@@ -1,113 +1,155 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { CheckCircle, Download, Mail, Calendar, Clock } from "lucide-react"
-import { motion } from "framer-motion"
-import { generateTicketText } from "@/lib/qr-generator"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { CheckCircle, Download, Mail, Calendar, Clock, Loader2 } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import { generateQRCodeDataURL, generateTicketText, type TicketData } from "@/lib/qr-generator"
 
-interface TicketData {
+interface TicketInfo {
   orderId: string
   customerName: string
   customerEmail: string
   ticketType: string
+  ticketName: string
   quantity: number
   totalAmount: number
   paymentStatus: string
   createdAt: string
+  qrCodeDataUrl?: string
 }
 
 export default function TicketSuccessPage() {
   const searchParams = useSearchParams()
-  const orderId = searchParams.get("orderId")
+  const orderId = searchParams.get("order")
+  const { toast } = useToast()
 
-  const [ticketData, setTicketData] = useState<TicketData | null>(null)
+  const [ticket, setTicket] = useState<TicketInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [emailCooldown, setEmailCooldown] = useState(0)
-  const [emailSending, setEmailSending] = useState(false)
+  const [emailLoading, setEmailLoading] = useState(false)
+  const [qrLoading, setQrLoading] = useState(false)
 
   useEffect(() => {
     if (orderId) {
-      fetchTicketData(orderId)
+      fetchTicket(orderId)
     }
   }, [orderId])
 
   useEffect(() => {
-    // Check for email cooldown in localStorage
-    const cooldownKey = `email_cooldown_${orderId}`
-    const lastEmailTime = localStorage.getItem(cooldownKey)
-
-    if (lastEmailTime) {
-      const timeDiff = Date.now() - Number.parseInt(lastEmailTime)
-      const remainingCooldown = Math.max(0, 3600000 - timeDiff) // 1 hour in ms
-
-      if (remainingCooldown > 0) {
-        setEmailCooldown(Math.ceil(remainingCooldown / 1000))
-      }
-    }
-  }, [orderId])
-
-  useEffect(() => {
-    // Countdown timer for email cooldown
+    let interval: NodeJS.Timeout
     if (emailCooldown > 0) {
-      const timer = setInterval(() => {
-        setEmailCooldown((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer)
-            return 0
-          }
-          return prev - 1
-        })
+      interval = setInterval(() => {
+        setEmailCooldown((prev) => Math.max(0, prev - 1))
       }, 1000)
-
-      return () => clearInterval(timer)
     }
+    return () => clearInterval(interval)
   }, [emailCooldown])
 
-  const fetchTicketData = async (orderId: string) => {
+  const fetchTicket = async (orderId: string) => {
     try {
       const response = await fetch(`/api/tickets/${orderId}`)
-      if (response.ok) {
-        const data = await response.json()
-        setTicketData(data)
+      const data = await response.json()
+
+      if (data.success) {
+        setTicket(data.ticket)
+
+        // Generate actual QR code if payment is finished
+        if (data.ticket.paymentStatus === "finished") {
+          await generateQRCode(data.ticket)
+        }
       }
     } catch (error) {
-      console.error("Failed to fetch ticket data:", error)
+      console.error("Error fetching ticket:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load ticket information",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
   }
 
-  const handleDownloadTicket = () => {
-    if (!ticketData) return
+  const generateQRCode = async (ticketData: TicketInfo) => {
+    setQrLoading(true)
+    try {
+      const qrData: TicketData = {
+        orderId: ticketData.orderId,
+        customerName: ticketData.customerName,
+        ticketType: ticketData.ticketType,
+        quantity: ticketData.quantity,
+        event: "Kaspa 4th Birthday Celebration",
+        date: "November 7-9, 2025",
+        venue: "Kaspa Community Center, Liverpool, NY",
+        verified: true,
+        timestamp: Date.now(),
+      }
 
-    const ticketText = generateTicketText({
-      orderId: ticketData.orderId,
-      customerName: ticketData.customerName,
-      ticketType: ticketData.ticketType,
-      quantity: ticketData.quantity,
+      const qrCodeDataUrl = await generateQRCodeDataURL(qrData)
+
+      setTicket((prev) =>
+        prev
+          ? {
+              ...prev,
+              qrCodeDataUrl: qrCodeDataUrl,
+            }
+          : null,
+      )
+    } catch (error) {
+      console.error("Error generating QR code:", error)
+      toast({
+        title: "Error",
+        description: "Failed to generate QR code",
+        variant: "destructive",
+      })
+    } finally {
+      setQrLoading(false)
+    }
+  }
+
+  const handleDownloadTicket = () => {
+    if (!ticket) return
+
+    const qrData: TicketData = {
+      orderId: ticket.orderId,
+      customerName: ticket.customerName,
+      ticketType: ticket.ticketType,
+      quantity: ticket.quantity,
       event: "Kaspa 4th Birthday Celebration",
       date: "November 7-9, 2025",
       venue: "Kaspa Community Center, Liverpool, NY",
-    })
+      verified: true,
+      timestamp: Date.now(),
+    }
+
+    const ticketText = generateTicketText(qrData)
 
     const blob = new Blob([ticketText], { type: "text/plain" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `kaspa-ticket-${ticketData.orderId}.txt`
+    a.download = `kaspa-birthday-ticket-${ticket.orderId}.txt`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+
+    toast({
+      title: "Success",
+      description: "Ticket downloaded successfully",
+    })
   }
 
   const handleEmailTicket = async () => {
-    if (!ticketData || emailCooldown > 0) return
+    if (!ticket || emailLoading) return
 
-    setEmailSending(true)
+    setEmailLoading(true)
+
     try {
       const response = await fetch("/api/tickets/resend-email", {
         method: "POST",
@@ -115,73 +157,95 @@ export default function TicketSuccessPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          orderId: ticketData.orderId,
+          orderId: ticket.orderId,
         }),
       })
 
-      if (response.ok) {
-        // Set cooldown
-        const cooldownKey = `email_cooldown_${orderId}`
-        localStorage.setItem(cooldownKey, Date.now().toString())
-        setEmailCooldown(3600) // 1 hour in seconds
+      const data = await response.json()
 
-        alert("Ticket email sent successfully!")
+      if (data.success) {
+        toast({
+          title: "Success",
+          description: "Ticket email sent successfully",
+        })
+        setEmailCooldown(3600) // 1 hour cooldown
       } else {
-        alert("Failed to send email. Please try again.")
+        if (data.remainingTime) {
+          setEmailCooldown(data.remainingTime)
+          toast({
+            title: "Cooldown Active",
+            description: `Please wait ${Math.ceil(data.remainingTime / 60)} minutes before sending another email`,
+            variant: "destructive",
+          })
+        } else {
+          toast({
+            title: "Error",
+            description: data.error || "Failed to send email",
+            variant: "destructive",
+          })
+        }
       }
     } catch (error) {
-      console.error("Failed to send email:", error)
-      alert("Failed to send email. Please try again.")
+      console.error("Error sending email:", error)
+      toast({
+        title: "Error",
+        description: "Failed to send email",
+        variant: "destructive",
+      })
     } finally {
-      setEmailSending(false)
+      setEmailLoading(false)
     }
   }
 
   const handleAddToCalendar = () => {
     const startDate = "20251107T090000Z"
     const endDate = "20251109T180000Z"
-    const title = encodeURIComponent("Kaspa 4th Birthday Celebration")
-    const details = encodeURIComponent(
-      "Kaspa 4th Birthday Celebration - 3 days of workshops, presentations, and networking",
-    )
-    const location = encodeURIComponent("Kaspa Community Center, Liverpool, NY")
+    const title = "Kaspa 4th Birthday Celebration"
+    const description = "Join us for 3 days of blockchain innovation, workshops, and community celebration!"
+    const location = "Kaspa Community Center, 4225 Long Branch Rd, Liverpool, NY 13088"
 
-    // Try Google Calendar first
-    const googleUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}&location=${location}`
+    // Google Calendar URL
+    const googleUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${startDate}/${endDate}&details=${encodeURIComponent(description)}&location=${encodeURIComponent(location)}`
 
-    // Create ICS file as fallback
+    // ICS file content
     const icsContent = `BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//Kaspa Events//Ticket System//EN
+PRODID:-//Kaspa Events//EN
 BEGIN:VEVENT
 UID:kaspa-birthday-2025@kaspaevents.xyz
-DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").split(".")[0]}Z
 DTSTART:${startDate}
 DTEND:${endDate}
-SUMMARY:Kaspa 4th Birthday Celebration
-DESCRIPTION:Kaspa 4th Birthday Celebration - 3 days of workshops, presentations, and networking
-LOCATION:Kaspa Community Center, Liverpool, NY
-STATUS:CONFIRMED
+SUMMARY:${title}
+DESCRIPTION:${description}
+LOCATION:${location}
 END:VEVENT
 END:VCALENDAR`
 
     // Try to open Google Calendar
     const newWindow = window.open(googleUrl, "_blank")
 
-    // If popup blocked or user prefers download, offer ICS file
-    setTimeout(() => {
-      if (!newWindow || newWindow.closed) {
-        const blob = new Blob([icsContent], { type: "text/calendar" })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.href = url
-        a.download = "kaspa-birthday-celebration.ics"
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
-      }
-    }, 1000)
+    // If popup blocked, download ICS file
+    if (!newWindow) {
+      const blob = new Blob([icsContent], { type: "text/calendar" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = "kaspa-birthday-celebration.ics"
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      toast({
+        title: "Calendar Event",
+        description: "Calendar file downloaded. Import it to your calendar app.",
+      })
+    } else {
+      toast({
+        title: "Calendar Event",
+        description: "Opening Google Calendar...",
+      })
+    }
   }
 
   const formatCooldownTime = (seconds: number) => {
@@ -190,28 +254,24 @@ END:VCALENDAR`
     return `${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`
   }
 
-  const getTicketTypeDisplay = (type: string) => {
-    return type
-      .replace("-", " ")
-      .split(" ")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ")
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p>Loading your ticket...</p>
+        </div>
       </div>
     )
   }
 
-  if (!ticketData) {
+  if (!ticket) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
         <Card className="w-full max-w-md">
           <CardContent className="pt-6 text-center">
-            <p className="text-red-600">Ticket not found. Please check your order ID.</p>
+            <h1 className="text-xl font-semibold mb-2">Ticket Not Found</h1>
+            <p className="text-gray-600">The ticket you're looking for doesn't exist or has been removed.</p>
           </CardContent>
         </Card>
       </div>
@@ -219,118 +279,155 @@ END:VCALENDAR`
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4">
-      <div className="container mx-auto max-w-2xl">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-          <Card className="mb-8">
-            <CardHeader className="text-center">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-                className="mx-auto mb-4"
-              >
-                <CheckCircle className="h-16 w-16 text-green-500" />
-              </motion.div>
-              <CardTitle className="text-2xl font-bold text-green-600">Payment Successful!</CardTitle>
-              <p className="text-muted-foreground">Your tickets have been confirmed and are ready to use.</p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8 px-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+            <CheckCircle className="h-8 w-8 text-green-600" />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            {ticket.paymentStatus === "finished" ? "Payment Successful!" : "Payment Processing"}
+          </h1>
+          <p className="text-gray-600">
+            {ticket.paymentStatus === "finished"
+              ? "Your tickets are ready for the Kaspa 4th Birthday Celebration"
+              : "Your payment is being processed. You will receive your tickets once confirmed."}
+          </p>
+        </div>
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Ticket Details</span>
+              <Badge variant={ticket.paymentStatus === "finished" ? "default" : "secondary"}>
+                {ticket.paymentStatus === "finished" ? "Confirmed" : "Processing"}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-600">Order ID</p>
+                <p className="font-mono text-sm">{ticket.orderId}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Customer</p>
+                <p className="font-medium">{ticket.customerName}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Ticket Type</p>
+                <p className="font-medium">{ticket.ticketName}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Quantity</p>
+                <p className="font-medium">
+                  {ticket.quantity} ticket{ticket.quantity > 1 ? "s" : ""}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Total Amount</p>
+                <p className="font-medium">${ticket.totalAmount}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Purchase Date</p>
+                <p className="font-medium">{new Date(ticket.createdAt).toLocaleDateString()}</p>
+              </div>
+            </div>
+
+            {ticket.paymentStatus === "finished" && (
+              <>
+                <Separator />
+                <div className="text-center">
+                  <h3 className="font-semibold mb-4">Your Digital Ticket</h3>
+                  <div className="inline-block p-4 bg-white rounded-lg border-2 border-dashed border-gray-300">
+                    {qrLoading ? (
+                      <div className="w-48 h-48 flex items-center justify-center">
+                        <Loader2 className="h-8 w-8 animate-spin" />
+                      </div>
+                    ) : ticket.qrCodeDataUrl ? (
+                      <img
+                        src={ticket.qrCodeDataUrl || "/placeholder.svg"}
+                        alt="Ticket QR Code"
+                        className="w-48 h-48 mx-auto"
+                      />
+                    ) : (
+                      <div className="w-48 h-48 flex items-center justify-center bg-gray-100 rounded">
+                        <p className="text-gray-500 text-sm">QR Code Loading...</p>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-600 mt-2">Present this QR code at the event entrance</p>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {ticket.paymentStatus === "finished" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Ticket Actions</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Ticket Information */}
-              <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-6 rounded-lg">
-                <h3 className="text-lg font-semibold mb-4">Ticket Details</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-blue-100 text-sm">Order ID</p>
-                    <p className="font-mono text-sm">{ticketData.orderId}</p>
-                  </div>
-                  <div>
-                    <p className="text-blue-100 text-sm">Ticket Type</p>
-                    <p className="font-semibold">{getTicketTypeDisplay(ticketData.ticketType)}</p>
-                  </div>
-                  <div>
-                    <p className="text-blue-100 text-sm">Quantity</p>
-                    <p className="font-semibold">{ticketData.quantity}</p>
-                  </div>
-                  <div>
-                    <p className="text-blue-100 text-sm">Total Paid</p>
-                    <p className="font-semibold">${ticketData.totalAmount}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Event Information */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h4 className="font-semibold mb-2">Event Information</h4>
-                <div className="space-y-1 text-sm text-gray-600">
-                  <p>
-                    <strong>Event:</strong> Kaspa 4th Birthday Celebration
-                  </p>
-                  <p>
-                    <strong>Date:</strong> November 7-9, 2025
-                  </p>
-                  <p>
-                    <strong>Location:</strong> Kaspa Community Center, Liverpool, NY
-                  </p>
-                  <p>
-                    <strong>Time:</strong> 9:00 AM - 6:00 PM daily
-                  </p>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="space-y-3">
-                <h4 className="font-semibold">Ticket Actions</h4>
-
-                <Button onClick={handleDownloadTicket} className="w-full bg-transparent" variant="outline">
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Button onClick={handleDownloadTicket} variant="outline" className="w-full bg-transparent">
                   <Download className="h-4 w-4 mr-2" />
                   Download Ticket
                 </Button>
 
                 <Button
                   onClick={handleEmailTicket}
-                  className="w-full bg-transparent"
                   variant="outline"
-                  disabled={emailCooldown > 0 || emailSending}
+                  className="w-full bg-transparent"
+                  disabled={emailCooldown > 0 || emailLoading}
                 >
-                  {emailSending ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                      Sending...
-                    </>
+                  {emailLoading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : emailCooldown > 0 ? (
-                    <>
-                      <Clock className="h-4 w-4 mr-2" />
-                      Email Ticket ({formatCooldownTime(emailCooldown)})
-                    </>
+                    <Clock className="h-4 w-4 mr-2" />
                   ) : (
-                    <>
-                      <Mail className="h-4 w-4 mr-2" />
-                      Email Ticket
-                    </>
+                    <Mail className="h-4 w-4 mr-2" />
                   )}
+                  {emailCooldown > 0 ? formatCooldownTime(emailCooldown) : "Email Ticket"}
                 </Button>
 
-                <Button onClick={handleAddToCalendar} className="w-full bg-transparent" variant="outline">
+                <Button onClick={handleAddToCalendar} variant="outline" className="w-full bg-transparent">
                   <Calendar className="h-4 w-4 mr-2" />
                   Add to Calendar
                 </Button>
               </div>
-
-              {/* Important Notes */}
-              <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-                <h4 className="font-semibold text-yellow-800 mb-2">Important Notes</h4>
-                <ul className="text-sm text-yellow-700 space-y-1">
-                  <li>• Your ticket has been sent to {ticketData.customerEmail}</li>
-                  <li>• Present your digital ticket (QR code) at the event entrance</li>
-                  <li>• Bring a valid ID for verification</li>
-                  <li>• Tickets are non-refundable but transferable</li>
-                  <li>• Contact tickets@kaspaevents.xyz for questions</li>
-                </ul>
-              </div>
             </CardContent>
           </Card>
-        </motion.div>
+        )}
+
+        <div className="mt-8 text-center">
+          <Card>
+            <CardContent className="pt-6">
+              <h3 className="font-semibold mb-2">Event Information</h3>
+              <div className="text-sm text-gray-600 space-y-1">
+                <p>
+                  <strong>Date:</strong> November 7-9, 2025
+                </p>
+                <p>
+                  <strong>Location:</strong> Kaspa Community Center
+                </p>
+                <p>
+                  <strong>Address:</strong> 4225 Long Branch Rd, Liverpool, NY 13088
+                </p>
+                <p>
+                  <strong>Time:</strong> 9:00 AM - 6:00 PM daily
+                </p>
+              </div>
+              <Separator className="my-4" />
+              <p className="text-sm text-gray-600">
+                Questions? Contact us at{" "}
+                <a href="mailto:tickets@kaspaevents.xyz" className="text-blue-600 hover:underline">
+                  tickets@kaspaevents.xyz
+                </a>
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   )

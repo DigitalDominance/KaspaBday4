@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Clock, CheckCircle, AlertCircle, Copy, ExternalLink, Loader2 } from "lucide-react"
+import { Clock, CheckCircle, AlertCircle, Copy, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface PaymentStatusTrackerProps {
@@ -235,15 +235,16 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
             </div>
 
             {/* Payment Progress */}
-            {paymentData.actuallyPaid && paymentData.actuallyPaid > 0 && (
-              <div className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 p-4 rounded-lg border border-blue-500/30 backdrop-blur-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-blue-300">Amount Received:</span>
-                  <span className="text-sm font-mono text-blue-100">
-                    {paymentData.actuallyPaid} {paymentData.payCurrency?.toUpperCase()}
-                  </span>
-                </div>
-                {paymentData.payAmount && (
+            {paymentData.actuallyPaid !== undefined &&
+              paymentData.actuallyPaid > 0 &&
+              paymentData.payAmount !== undefined && (
+                <div className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 p-4 rounded-lg border border-blue-500/30 backdrop-blur-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-blue-300">Amount Received:</span>
+                    <span className="text-sm font-mono text-blue-100">
+                      {paymentData.actuallyPaid} {paymentData.payCurrency?.toUpperCase()}
+                    </span>
+                  </div>
                   <div className="mt-2">
                     <div className="w-full bg-slate-700 rounded-full h-2">
                       <div
@@ -254,9 +255,8 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
                       />
                     </div>
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
           </div>
         )}
 
@@ -271,21 +271,6 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
             </span>
           )}
         </div>
-
-        {/* Action Buttons */}
-        {paymentData.paymentStatus === "waiting" && paymentData.payAddress && (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => window.open(`https://blockchair.com/search?q=${paymentData.payAddress}`, "_blank")}
-              className="flex-1"
-            >
-              <ExternalLink className="h-4 w-4 mr-2" />
-              View on Explorer
-            </Button>
-          </div>
-        )}
 
         {paymentData.paymentStatus === "finished" && (
           <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 p-4 rounded-lg border border-green-500/30 backdrop-blur-sm">

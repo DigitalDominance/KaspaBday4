@@ -9,10 +9,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Loader2, CreditCard, User, Coins, Search, ArrowRight, CheckCircle, Copy, ExternalLink } from "lucide-react"
+import { Loader2, CreditCard, User, Coins, Search, ArrowRight, CheckCircle, ExternalLink } from "lucide-react"
 import { Space_Grotesk } from "next/font/google"
 import { cn } from "@/lib/utils"
+import { PaymentStatusTracker } from "@/components/payment-status-tracker"
+import { PaymentStorage } from "@/lib/payment-storage"
 
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"] })
 
@@ -30,6 +31,7 @@ interface PaymentInfo {
   payAmount: number
   payCurrency: string
   paymentStatus: string
+  orderId: string
 }
 
 export function TicketPurchaseModal({
@@ -53,10 +55,11 @@ export function TicketPurchaseModal({
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
   const [copied, setCopied] = useState(false)
 
-  // Fetch available currencies
+  // Check for existing pending payments when modal opens
   useEffect(() => {
     if (isOpen) {
       fetchCurrencies()
+      checkForExistingPayments()
     }
   }, [isOpen])
 
@@ -69,6 +72,23 @@ export function TicketPurchaseModal({
       setFilteredCurrencies(currencies)
     }
   }, [searchTerm, currencies])
+
+  const checkForExistingPayments = () => {
+    const pendingPayments = PaymentStorage.getPendingPayments()
+    if (pendingPayments.length > 0) {
+      // If there's a pending payment, show it
+      const latestPayment = pendingPayments[pendingPayments.length - 1]
+      setPaymentInfo({
+        paymentId: latestPayment.paymentId,
+        payAddress: latestPayment.payAddress,
+        payAmount: latestPayment.payAmount,
+        payCurrency: latestPayment.payCurrency,
+        paymentStatus: latestPayment.paymentStatus,
+        orderId: latestPayment.orderId,
+      })
+      setStep(3)
+    }
+  }
 
   const fetchCurrencies = async () => {
     try {
@@ -109,7 +129,27 @@ export function TicketPurchaseModal({
       const data = await response.json()
 
       if (data.success) {
-        setPaymentInfo(data.order)
+        const payment = data.order
+        setPaymentInfo(payment)
+
+        // Store payment in localStorage for tracking
+        PaymentStorage.savePayment({
+          paymentId: payment.paymentId,
+          orderId: payment.orderId,
+          customerName: customerInfo.name,
+          customerEmail: customerInfo.email,
+          ticketType,
+          ticketName,
+          quantity,
+          totalAmount: ticketPrice * quantity,
+          currency: selectedCurrency,
+          payAddress: payment.payAddress,
+          payAmount: payment.payAmount,
+          payCurrency: payment.payCurrency,
+          paymentStatus: payment.paymentStatus,
+          createdAt: new Date().toISOString(),
+        })
+
         setStep(3)
       } else {
         alert(data.error || "Purchase failed")
@@ -119,6 +159,12 @@ export function TicketPurchaseModal({
       alert("Purchase failed. Please try again.")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handlePaymentStatusChange = (status: string) => {
+    if (paymentInfo) {
+      setPaymentInfo((prev) => (prev ? { ...prev, paymentStatus: status } : null))
     }
   }
 
@@ -140,9 +186,21 @@ export function TicketPurchaseModal({
     exit: { opacity: 0, x: -20 },
   }
 
+  const handleClose = () => {
+    // Don't reset state if there's a pending payment
+    if (!paymentInfo || paymentInfo.paymentStatus === "finished" || paymentInfo.paymentStatus === "failed") {
+      setStep(1)
+      setPaymentInfo(null)
+      setCustomerInfo({ name: "", email: "" })
+      setSelectedCurrency("")
+      setQuantity(1)
+    }
+    onClose()
+  }
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle
             className={cn(
@@ -150,34 +208,36 @@ export function TicketPurchaseModal({
               spaceGrotesk.className,
             )}
           >
-            Purchase {ticketName}
+            {step === 3 && paymentInfo ? `Payment Tracking - ${ticketName}` : `Purchase ${ticketName}`}
           </DialogTitle>
 
           {/* Progress Indicator */}
-          <div className="flex items-center justify-center space-x-2 mt-4">
-            {[1, 2, 3].map((stepNum) => (
-              <div key={stepNum} className="flex items-center">
-                <div
-                  className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all duration-300",
-                    step >= stepNum
-                      ? "bg-gradient-to-r from-blue-500 to-purple-500 text-white"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {step > stepNum ? <CheckCircle className="w-4 h-4" /> : stepNum}
-                </div>
-                {stepNum < 3 && (
+          {step < 3 && (
+            <div className="flex items-center justify-center space-x-2 mt-4">
+              {[1, 2, 3].map((stepNum) => (
+                <div key={stepNum} className="flex items-center">
                   <div
                     className={cn(
-                      "w-8 h-0.5 mx-2 transition-all duration-300",
-                      step > stepNum ? "bg-gradient-to-r from-blue-500 to-purple-500" : "bg-muted",
+                      "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all duration-300",
+                      step >= stepNum
+                        ? "bg-gradient-to-r from-blue-500 to-purple-500 text-white"
+                        : "bg-muted text-muted-foreground",
                     )}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
+                  >
+                    {step > stepNum ? <CheckCircle className="w-4 h-4" /> : stepNum}
+                  </div>
+                  {stepNum < 3 && (
+                    <div
+                      className={cn(
+                        "w-8 h-0.5 mx-2 transition-all duration-300",
+                        step > stepNum ? "bg-gradient-to-r from-blue-500 to-purple-500" : "bg-muted",
+                      )}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </DialogHeader>
 
         <AnimatePresence mode="wait">
@@ -374,89 +434,30 @@ export function TicketPurchaseModal({
               exit="exit"
               className="space-y-6"
             >
-              <Card className="border-green-500/20 bg-gradient-to-br from-green-500/5 to-blue-500/5">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                    Payment Created Successfully
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="text-center">
-                    <Badge className="bg-gradient-to-r from-green-500 to-blue-500 text-white mb-4">
-                      Payment Pending
-                    </Badge>
-                    <p className="text-muted-foreground mb-4">
-                      Send exactly{" "}
-                      <strong>
-                        {paymentInfo.payAmount} {paymentInfo.payCurrency ? paymentInfo.payCurrency.toUpperCase() : ""}
-                      </strong>{" "}
-                      to the address below
-                    </p>
-                  </div>
+              <PaymentStatusTracker paymentId={paymentInfo.paymentId} onStatusChange={handlePaymentStatusChange} />
 
-                  {/* Payment Address */}
-                  <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 p-4 rounded-lg border border-blue-500/20">
-                    <Label className="text-sm font-medium mb-2 block">Payment Address</Label>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 p-2 bg-background/50 rounded text-xs break-all">
-                        {paymentInfo.payAddress}
-                      </code>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => copyToClipboard(paymentInfo.payAddress)}
-                        className="flex-shrink-0"
-                      >
-                        {copied ? <CheckCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Payment Amount */}
-                  <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 p-4 rounded-lg border border-purple-500/20">
-                    <Label className="text-sm font-medium mb-2 block">Amount to Send</Label>
-                    <div className="flex items-center justify-between">
-                      <span className="text-2xl font-bold">
-                        {paymentInfo.payAmount} {paymentInfo.payCurrency ? paymentInfo.payCurrency.toUpperCase() : ""}
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => copyToClipboard(paymentInfo.payAmount.toString())}
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Instructions */}
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    <p>• Send the exact amount to avoid delays</p>
-                    <p>• Your ticket will be generated automatically after payment confirmation</p>
-                    <p>• You'll receive an email with your ticket and QR code</p>
-                    <p>• Payment typically confirms within 10-30 minutes</p>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={onClose} className="flex-1 bg-transparent">
-                      Close
-                    </Button>
-                    <Button
-                      onClick={() =>
-                        window.open(
-                          `${process.env.NEXT_PUBLIC_BASE_URL}/ticket-success?order=${paymentInfo.paymentId}`,
-                          "_blank",
-                        )
-                      }
-                      className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-                    >
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      Track Payment
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleClose}
+                  className="flex-1 bg-transparent"
+                  disabled={paymentInfo.paymentStatus === "confirming"}
+                >
+                  {paymentInfo.paymentStatus === "finished" ? "Close" : "Close & Track Later"}
+                </Button>
+                <Button
+                  onClick={() =>
+                    window.open(
+                      `${process.env.NEXT_PUBLIC_BASE_URL}/ticket-success?order=${paymentInfo.orderId}`,
+                      "_blank",
+                    )
+                  }
+                  className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Open Tracker Page
+                </Button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

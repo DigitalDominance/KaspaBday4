@@ -8,10 +8,10 @@ export interface TicketReservation {
   ticketType: string
   quantity: number
   customerEmail: string
-  reservedAt: Date
-  expiresAt: Date
-  status: "active" | "expired" | "confirmed" | "cancelled"
+  status: "active" | "confirmed" | "cancelled" | "expired"
   createdAt: Date
+  expiresAt: Date
+  updatedAt: Date
 }
 
 export class TicketReservationModel {
@@ -24,7 +24,7 @@ export class TicketReservationModel {
     return db.collection<TicketReservation>(this.collectionName)
   }
 
-  // Create a new reservation
+  // Create a new reservation with 15-minute expiry
   static async createReservation(
     orderId: string,
     paymentId: string,
@@ -33,7 +33,6 @@ export class TicketReservationModel {
     customerEmail: string,
   ): Promise<TicketReservation> {
     const collection = await this.getCollection()
-
     const now = new Date()
     const expiresAt = new Date(now.getTime() + this.RESERVATION_DURATION_MINUTES * 60 * 1000)
 
@@ -43,13 +42,15 @@ export class TicketReservationModel {
       ticketType,
       quantity,
       customerEmail,
-      reservedAt: now,
-      expiresAt,
       status: "active",
       createdAt: now,
+      expiresAt,
+      updatedAt: now,
     }
 
     const result = await collection.insertOne(reservation)
+    console.log(`🔒 Created reservation for ${quantity}x ${ticketType} tickets, expires at ${expiresAt.toISOString()}`)
+
     return { ...reservation, _id: result.insertedId }
   }
 
@@ -59,109 +60,106 @@ export class TicketReservationModel {
     return await collection.findOne({ paymentId })
   }
 
-  // Get reservation by order ID
-  static async getByOrderId(orderId: string): Promise<TicketReservation | null> {
-    const collection = await this.getCollection()
-    return await collection.findOne({ orderId })
+  // Get remaining time for a reservation
+  static async getRemainingTime(
+    paymentId: string,
+  ): Promise<{ valid: boolean; timeRemaining: number; expired: boolean }> {
+    const reservation = await this.getByPaymentId(paymentId)
+
+    if (!reservation || reservation.status !== "active") {
+      return { valid: false, timeRemaining: 0, expired: true }
+    }
+
+    const now = new Date()
+    const timeRemaining = Math.max(0, Math.floor((reservation.expiresAt.getTime() - now.getTime()) / 1000))
+    const expired = timeRemaining === 0
+
+    if (expired && reservation.status === "active") {
+      // Mark as expired
+      await this.expireReservation(paymentId)
+    }
+
+    return {
+      valid: !expired,
+      timeRemaining,
+      expired,
+    }
   }
 
-  // Cancel a reservation
+  // Confirm reservation (when payment is successful)
+  static async confirmReservation(paymentId: string): Promise<boolean> {
+    const collection = await this.getCollection()
+    const result = await collection.updateOne(
+      { paymentId, status: "active" },
+      {
+        $set: {
+          status: "confirmed",
+          updatedAt: new Date(),
+        },
+      },
+    )
+
+    console.log(`✅ Confirmed reservation for payment: ${paymentId}`)
+    return result.modifiedCount > 0
+  }
+
+  // Cancel reservation (user cancellation)
   static async cancelReservation(paymentId: string): Promise<boolean> {
     const collection = await this.getCollection()
-
     const result = await collection.updateOne(
       { paymentId, status: "active" },
       {
         $set: {
           status: "cancelled",
-          cancelledAt: new Date(),
+          updatedAt: new Date(),
         },
       },
     )
 
+    console.log(`❌ Cancelled reservation for payment: ${paymentId}`)
     return result.modifiedCount > 0
   }
 
-  // Confirm a reservation (when payment is completed)
-  static async confirmReservation(paymentId: string): Promise<boolean> {
+  // Expire reservation (automatic expiry)
+  static async expireReservation(paymentId: string): Promise<boolean> {
     const collection = await this.getCollection()
-
     const result = await collection.updateOne(
-      { paymentId },
-      {
-        $set: {
-          status: "confirmed",
-          confirmedAt: new Date(),
-        },
-      },
-    )
-
-    return result.modifiedCount > 0
-  }
-
-  // Clean up expired reservations
-  static async cleanupExpiredReservations(): Promise<number> {
-    const collection = await this.getCollection()
-
-    const now = new Date()
-    const result = await collection.updateMany(
-      {
-        status: "active",
-        expiresAt: { $lt: now },
-      },
+      { paymentId, status: "active" },
       {
         $set: {
           status: "expired",
-          expiredAt: now,
+          updatedAt: new Date(),
         },
       },
     )
 
-    console.log(`🧹 Cleaned up ${result.modifiedCount} expired reservations`)
-    return result.modifiedCount
+    if (result.modifiedCount > 0) {
+      console.log(`⏰ Expired reservation for payment: ${paymentId}`)
+    }
+    return result.modifiedCount > 0
   }
 
-  // Get all expired reservations that need stock released
+  // Get all expired reservations that need cleanup
   static async getExpiredReservations(): Promise<TicketReservation[]> {
     const collection = await this.getCollection()
+    const now = new Date()
 
     return await collection
       .find({
-        status: "expired",
-        expiredAt: { $exists: true },
+        status: "active",
+        expiresAt: { $lt: now },
       })
       .toArray()
   }
 
-  // Check if reservation is still valid
-  static async isReservationValid(paymentId: string): Promise<boolean> {
-    const reservation = await this.getByPaymentId(paymentId)
+  // Clean up expired reservations
+  static async cleanupExpiredReservations(): Promise<void> {
+    const expiredReservations = await this.getExpiredReservations()
 
-    if (!reservation || reservation.status !== "active") {
-      return false
+    for (const reservation of expiredReservations) {
+      await this.expireReservation(reservation.paymentId)
     }
 
-    const now = new Date()
-    if (now > reservation.expiresAt) {
-      // Mark as expired
-      await this.cleanupExpiredReservations()
-      return false
-    }
-
-    return true
-  }
-
-  // Get time remaining for reservation
-  static async getTimeRemaining(paymentId: string): Promise<number> {
-    const reservation = await this.getByPaymentId(paymentId)
-
-    if (!reservation || reservation.status !== "active") {
-      return 0
-    }
-
-    const now = new Date()
-    const remaining = reservation.expiresAt.getTime() - now.getTime()
-
-    return Math.max(0, Math.floor(remaining / 1000)) // Return seconds
+    console.log(`🧹 Cleaned up ${expiredReservations.length} expired reservations`)
   }
 }

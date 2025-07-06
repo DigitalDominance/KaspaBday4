@@ -63,7 +63,7 @@ export class TicketStockModel {
     return await collection.find({}).toArray()
   }
 
-  // Reserve tickets (when payment is created) - now with expiration
+  // Reserve tickets (when payment is created) - now with expiration tracking
   static async reserveTickets(ticketType: string, quantity: number): Promise<boolean> {
     const collection = await this.getCollection()
 
@@ -152,7 +152,7 @@ export class TicketStockModel {
       const collection = await TicketReservationModel.getCollection()
       await collection.deleteMany({
         status: "expired",
-        expiredAt: { $exists: true },
+        updatedAt: { $lt: new Date(Date.now() - 60000) }, // Only delete if expired for more than 1 minute
       })
     }
   }

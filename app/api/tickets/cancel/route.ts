@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server"
-import { TicketStockModel } from "@/lib/models/TicketStock"
 import { TicketReservationModel } from "@/lib/models/TicketReservation"
+import { TicketStockModel } from "@/lib/models/TicketStock"
 import { KaspaBirthdayTicketsModel } from "@/lib/models/KaspaBirthdayTickets"
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const { paymentId } = body
+    const { paymentId } = await request.json()
 
     if (!paymentId) {
       return NextResponse.json({ error: "Payment ID is required" }, { status: 400 })
@@ -20,7 +19,7 @@ export async function POST(request: Request) {
 
     // Check if reservation is still active
     if (reservation.status !== "active") {
-      return NextResponse.json({ error: "Reservation is not active" }, { status: 400 })
+      return NextResponse.json({ error: "Reservation is no longer active" }, { status: 400 })
     }
 
     // Cancel the reservation
@@ -29,13 +28,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to cancel reservation" }, { status: 500 })
     }
 
-    // Release the reserved tickets
+    // Release the reserved tickets back to stock
     await TicketStockModel.releaseReservation(reservation.ticketType, reservation.quantity)
 
     // Update the ticket record status
-    await KaspaBirthdayTicketsModel.updatePaymentStatus(paymentId, "cancelled")
+    await KaspaBirthdayTicketsModel.updatePaymentStatus(paymentId, { paymentStatus: "cancelled" })
 
-    console.log(`❌ Cancelled reservation for payment ${paymentId}`)
+    console.log(`✅ Successfully cancelled reservation for payment: ${paymentId}`)
 
     return NextResponse.json({
       success: true,

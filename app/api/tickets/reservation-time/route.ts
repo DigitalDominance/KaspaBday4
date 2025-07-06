@@ -10,26 +10,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Payment ID is required" }, { status: 400 })
     }
 
-    // Check if reservation is still valid
-    const isValid = await TicketReservationModel.isReservationValid(paymentId)
-    if (!isValid) {
-      return NextResponse.json({
-        valid: false,
-        timeRemaining: 0,
-        expired: true,
-      })
-    }
+    const remainingTime = await TicketReservationModel.getRemainingTime(paymentId)
 
-    // Get time remaining
-    const timeRemaining = await TicketReservationModel.getTimeRemaining(paymentId)
-
-    return NextResponse.json({
-      valid: true,
-      timeRemaining,
-      expired: false,
-    })
+    return NextResponse.json(remainingTime)
   } catch (error) {
-    console.error("Reservation time check error:", error)
-    return NextResponse.json({ error: "Failed to check reservation time" }, { status: 500 })
+    console.error("Get reservation time error:", error)
+    return NextResponse.json({ error: "Failed to get reservation time" }, { status: 500 })
   }
 }

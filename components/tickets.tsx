@@ -42,7 +42,7 @@ const ticketTypes = [
   {
     id: "1-day",
     name: "1-Day Pass",
-    price: 1,
+    price: 10,
     originalPrice: null,
     description: "Perfect for a single day experience",
     icon: <Zap className="h-6 w-6" />,

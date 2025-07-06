@@ -30,8 +30,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // Release the reservation
-    await TicketStockModel.releaseReservation(ticket.ticketType, ticket.quantity)
+    // Release the reservation with order ID for proper tracking
+    await TicketStockModel.releaseReservation(ticket.ticketType, ticket.quantity, ticket.orderId)
 
     // Update ticket status to cancelled
     await KaspaBirthdayTicketsModel.updatePaymentStatus(ticket.paymentId, {

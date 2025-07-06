@@ -1,41 +1,50 @@
 import { NextResponse } from "next/server"
-import { TicketReservationModel } from "@/lib/models/TicketReservation"
+import { KaspaBirthdayTicketsModel } from "@/lib/models/KaspaBirthdayTickets"
 import { TicketStockModel } from "@/lib/models/TicketStock"
 
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { paymentId } = body
+    const { paymentId, orderId } = body
 
-    if (!paymentId) {
-      return NextResponse.json({ error: "Payment ID is required" }, { status: 400 })
+    if (!paymentId && !orderId) {
+      return NextResponse.json({ error: "Payment ID or Order ID required" }, { status: 400 })
     }
 
-    // Get the reservation details
-    const reservation = await TicketReservationModel.getByPaymentId(paymentId)
-    if (!reservation) {
-      return NextResponse.json({ error: "Reservation not found" }, { status: 404 })
+    // Find the ticket record
+    const ticket = paymentId
+      ? await KaspaBirthdayTicketsModel.findByPaymentId(paymentId)
+      : await KaspaBirthdayTicketsModel.findByOrderId(orderId)
+
+    if (!ticket) {
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 })
     }
 
-    if (reservation.status !== "active") {
-      return NextResponse.json({ error: "Reservation is not active" }, { status: 400 })
+    // Only allow cancellation if payment is still waiting
+    if (ticket.paymentStatus !== "waiting") {
+      return NextResponse.json(
+        {
+          error: "Cannot cancel payment that is not in waiting status",
+        },
+        { status: 400 },
+      )
     }
 
-    // Cancel the reservation
-    const cancelled = await TicketReservationModel.cancelReservation(paymentId)
-    if (!cancelled) {
-      return NextResponse.json({ error: "Failed to cancel reservation" }, { status: 500 })
-    }
+    // Release the reservation
+    await TicketStockModel.releaseReservation(ticket.ticketType, ticket.quantity)
 
-    // Release the reserved tickets back to stock
-    await TicketStockModel.releaseReservation(reservation.ticketType, reservation.quantity)
+    // Update ticket status to cancelled
+    await KaspaBirthdayTicketsModel.updatePaymentStatus(ticket.paymentId, {
+      paymentStatus: "cancelled",
+      notes: "Cancelled by user",
+    })
 
     return NextResponse.json({
       success: true,
-      message: "Reservation cancelled successfully",
+      message: "Payment cancelled and reservation released",
     })
   } catch (error) {
-    console.error("Cancel reservation error:", error)
-    return NextResponse.json({ error: "Failed to cancel reservation" }, { status: 500 })
+    console.error("Cancel payment error:", error)
+    return NextResponse.json({ error: "Failed to cancel payment" }, { status: 500 })
   }
 }

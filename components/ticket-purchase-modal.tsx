@@ -187,8 +187,14 @@ export function TicketPurchaseModal({
   }
 
   const handleClose = () => {
-    // Don't reset state if there's a pending payment
-    if (!paymentInfo || paymentInfo.paymentStatus === "finished" || paymentInfo.paymentStatus === "failed") {
+    // Don't reset state if there's a pending payment (unless it's cancelled/expired)
+    if (
+      !paymentInfo ||
+      paymentInfo.paymentStatus === "finished" ||
+      paymentInfo.paymentStatus === "failed" ||
+      paymentInfo.paymentStatus === "cancelled" ||
+      paymentInfo.paymentStatus === "expired"
+    ) {
       setStep(1)
       setPaymentInfo(null)
       setCustomerInfo({ name: "", email: "" })
@@ -434,7 +440,19 @@ export function TicketPurchaseModal({
               exit="exit"
               className="space-y-6"
             >
-              <PaymentStatusTracker paymentId={paymentInfo.paymentId} onStatusChange={handlePaymentStatusChange} />
+              <PaymentStatusTracker
+                paymentId={paymentInfo.paymentId}
+                onStatusChange={handlePaymentStatusChange}
+                onCancel={() => {
+                  // Reset modal state when payment is cancelled
+                  setStep(1)
+                  setPaymentInfo(null)
+                  setCustomerInfo({ name: "", email: "" })
+                  setSelectedCurrency("")
+                  setQuantity(1)
+                  onClose()
+                }}
+              />
 
               <div className="flex gap-2">
                 <Button

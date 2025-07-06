@@ -10,6 +10,9 @@ const TICKET_PRICES = {
   vip: { price: 299, name: "VIP Pass" },
 }
 
+// 30 minutes in milliseconds
+const RESERVATION_TIMEOUT = 30 * 60 * 1000
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -37,8 +40,11 @@ export async function POST(request: Request) {
     // Create order ID
     const orderId = `KASPA-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
-    // Reserve tickets in stock system
-    const reserved = await TicketStockModel.reserveTickets(ticketType, quantity)
+    // Calculate expiration time (30 minutes from now)
+    const expiresAt = new Date(Date.now() + RESERVATION_TIMEOUT)
+
+    // Reserve tickets in stock system with expiration
+    const reserved = await TicketStockModel.reserveTickets(ticketType, quantity, expiresAt)
     if (!reserved) {
       return NextResponse.json({ error: "Failed to reserve tickets" }, { status: 400 })
     }
@@ -66,7 +72,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: payment.error }, { status: 400 })
       }
 
-      // Store ticket order in database
+      // Store ticket order in database with expiration
       const ticketRecord = await KaspaBirthdayTicketsModel.create({
         orderId,
         customerName: customerInfo.name,
@@ -82,6 +88,7 @@ export async function POST(request: Request) {
         payAddress: payment.pay_address,
         payAmount: payment.pay_amount,
         payCurrency: payment.pay_currency,
+        reservationExpiresAt: expiresAt,
       })
 
       return NextResponse.json({
@@ -93,6 +100,7 @@ export async function POST(request: Request) {
           payAmount: payment.pay_amount,
           payCurrency: payment.pay_currency,
           paymentStatus: payment.payment_status,
+          expiresAt: expiresAt.toISOString(),
         },
         payment: payment,
       })

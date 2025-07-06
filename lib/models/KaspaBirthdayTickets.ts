@@ -10,7 +10,7 @@ export interface KaspaBirthdayTicket {
   ticketName: string
   quantity: number
   pricePerTicket: number
-  totalAmount: number
+  totalAmount: string
   currency: string
   paymentId: string
   paymentStatus: string
@@ -26,6 +26,7 @@ export interface KaspaBirthdayTicket {
   emailSent?: boolean
   paymentConfirmationEmailSent?: boolean
   notes?: string
+  reservationExpiresAt?: Date
 }
 
 export class KaspaBirthdayTicketsModel {
@@ -61,6 +62,18 @@ export class KaspaBirthdayTicketsModel {
   static async findByPaymentId(paymentId: string) {
     const collection = await this.getCollection()
     return await collection.findOne({ paymentId })
+  }
+
+  static async findExpiredReservations() {
+    const collection = await this.getCollection()
+    const now = new Date()
+
+    return await collection
+      .find({
+        paymentStatus: "waiting",
+        reservationExpiresAt: { $lt: now },
+      })
+      .toArray()
   }
 
   static async updatePaymentStatus(paymentId: string, updateData: Partial<KaspaBirthdayTicket>) {

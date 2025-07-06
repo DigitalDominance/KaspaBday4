@@ -147,6 +147,7 @@ export class TicketStockModel {
     // Check if we have enough available tickets
     const stock = await stockCollection.findOne({ ticketType })
     if (!stock || stock.availableQuantity < quantity) {
+      console.log(`❌ Not enough tickets available: ${stock?.availableQuantity || 0} < ${quantity}`)
       return false
     }
 

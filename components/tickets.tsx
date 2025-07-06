@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Check, Star, Crown, Zap, Gift, AlertCircle } from "lucide-react"
 import { ElegantShape } from "@/components/ui/elegant-shape"
 import { TicketPurchaseModal } from "@/components/ticket-purchase-modal"
@@ -146,8 +146,8 @@ export function Tickets() {
   useEffect(() => {
     fetchTicketStock()
 
-    // Update stock every 30 seconds
-    const interval = setInterval(fetchTicketStock, 30000)
+    // Update stock every 15 seconds
+    const interval = setInterval(fetchTicketStock, 15000)
     return () => clearInterval(interval)
   }, [])
 
@@ -355,6 +355,7 @@ export function Tickets() {
                                   {availability.available} of {availability.total} available
                                 </div>
                                 {showReserved && <div className="text-blue-400">{availability.reserved} reserved</div>}
+                                <div className="text-green-600">{availability.sold} sold</div>
                               </>
                             )}
                           </div>

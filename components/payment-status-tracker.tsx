@@ -1,41 +1,95 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Clock, Copy, X, ExternalLink, AlertTriangle } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
-
-interface PaymentData {
-  orderId: string
-  paymentId: string
-  payAddress: string
-  payAmount: string
-  payCurrency: string
-  paymentStatus: string
-  expiresAt?: string
-  ticketType?: string
-  quantity?: number
-}
+import { Clock, CheckCircle, AlertCircle, Copy, Loader2, Timer, X } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { PaymentStorage } from "@/lib/payment-storage"
 
 interface PaymentStatusTrackerProps {
-  paymentData: PaymentData
+  paymentId: string
+  onStatusChange?: (status: string) => void
   onCancel?: () => void
-  onClose?: () => void
-  showModal?: boolean
 }
 
-export function PaymentStatusTracker({ paymentData, onCancel, onClose, showModal = false }: PaymentStatusTrackerProps) {
-  const [timeLeft, setTimeLeft] = useState<number | null>(null)
-  const [status, setStatus] = useState(paymentData.paymentStatus)
-  const [isExpired, setIsExpired] = useState(false)
-  const [isCancelling, setIsCancelling] = useState(false)
-  const { toast } = useToast()
+interface PaymentData {
+  paymentId: string
+  paymentStatus: string
+  payAddress?: string
+  payAmount?: number
+  payCurrency?: string
+  actuallyPaid?: number
+  updatedAt?: string
+  expiresAt?: string
+  orderId?: string
+}
 
-  // Calculate time remaining
+export function PaymentStatusTracker({ paymentId, onStatusChange, onCancel }: PaymentStatusTrackerProps) {
+  const [paymentData, setPaymentData] = useState<PaymentData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
+  const [cancelling, setCancelling] = useState(false)
+
   useEffect(() => {
-    if (!paymentData.expiresAt || status !== "waiting") return
+    if (!paymentId) return
+
+    const checkPaymentStatus = async () => {
+      try {
+        const response = await fetch(`/api/payments/${paymentId}/status`)
+        const data = await response.json()
+
+        if (data.error) {
+          setError(data.error)
+          setLoading(false)
+          return
+        }
+
+        const newPaymentData = {
+          paymentId: data.paymentId || paymentId,
+          paymentStatus: data.paymentStatus || data.status || "waiting",
+          payAddress: data.payAddress,
+          payAmount: data.payAmount,
+          payCurrency: data.payCurrency,
+          actuallyPaid: data.actuallyPaid,
+          updatedAt: data.updatedAt,
+          expiresAt: data.expiresAt,
+          orderId: data.orderId,
+        }
+
+        setPaymentData(newPaymentData)
+
+        // Call status change callback
+        if (onStatusChange) {
+          onStatusChange(newPaymentData.paymentStatus)
+        }
+
+        setLoading(false)
+      } catch (err) {
+        console.error("Error checking payment status:", err)
+        setError("Failed to check payment status")
+        setLoading(false)
+      }
+    }
+
+    // Initial check
+    checkPaymentStatus()
+
+    // Poll every 10 seconds for status updates
+    const interval = setInterval(checkPaymentStatus, 10000)
+
+    return () => clearInterval(interval)
+  }, [paymentId, onStatusChange])
+
+  // Timer countdown effect
+  useEffect(() => {
+    if (!paymentData?.expiresAt || paymentData.paymentStatus !== "waiting") {
+      setTimeRemaining(null)
+      return
+    }
 
     const updateTimer = () => {
       const now = new Date().getTime()
@@ -43,280 +97,357 @@ export function PaymentStatusTracker({ paymentData, onCancel, onClose, showModal
       const remaining = expiry - now
 
       if (remaining <= 0) {
-        setTimeLeft(0)
-        setIsExpired(true)
-        setStatus("expired")
-      } else {
-        setTimeLeft(remaining)
+        setTimeRemaining(0)
+        // Trigger cleanup
+        fetch("/api/tickets/cleanup-expired", { method: "POST" })
+        return
       }
+
+      setTimeRemaining(remaining)
     }
 
+    // Update immediately
     updateTimer()
-    const interval = setInterval(updateTimer, 1000)
 
-    return () => clearInterval(interval)
-  }, [paymentData.expiresAt, status])
+    // Update every second
+    const timerInterval = setInterval(updateTimer, 1000)
 
-  // Format time remaining
-  const formatTimeLeft = (ms: number) => {
+    return () => clearInterval(timerInterval)
+  }, [paymentData?.expiresAt, paymentData?.paymentStatus])
+
+  const formatTimeRemaining = (ms: number) => {
     const minutes = Math.floor(ms / 60000)
     const seconds = Math.floor((ms % 60000) / 1000)
     return `${minutes}:${seconds.toString().padStart(2, "0")}`
   }
 
-  // Copy to clipboard
-  const copyToClipboard = async (text: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      toast({
-        title: "Copied!",
-        description: `${label} copied to clipboard`,
-      })
-    } catch (err) {
-      toast({
-        title: "Failed to copy",
-        description: "Please copy manually",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Handle cancel payment
   const handleCancel = async () => {
-    if (!onCancel) return
+    if (!paymentData?.paymentId) return
 
-    setIsCancelling(true)
+    setCancelling(true)
     try {
       const response = await fetch("/api/tickets/cancel", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          paymentId: paymentData.paymentId,
-          orderId: paymentData.orderId,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentId: paymentData.paymentId }),
       })
 
-      if (response.ok) {
-        setStatus("cancelled")
-        toast({
-          title: "Payment Cancelled",
-          description: "Your reservation has been released",
-        })
-        onCancel()
+      const data = await response.json()
+
+      if (data.success) {
+        // Remove from local storage
+        PaymentStorage.removePayment(paymentData.paymentId)
+
+        // Update status
+        setPaymentData((prev) => (prev ? { ...prev, paymentStatus: "cancelled" } : null))
+
+        // Call callbacks
+        if (onStatusChange) onStatusChange("cancelled")
+        if (onCancel) onCancel()
       } else {
-        const error = await response.json()
-        toast({
-          title: "Cancellation Failed",
-          description: error.error || "Failed to cancel payment",
-          variant: "destructive",
-        })
+        alert(data.error || "Failed to cancel payment")
       }
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to cancel payment",
-        variant: "destructive",
-      })
+      console.error("Cancel error:", error)
+      alert("Failed to cancel payment")
     } finally {
-      setIsCancelling(false)
+      setCancelling(false)
     }
   }
 
-  // Get status color and icon
-  const getStatusInfo = () => {
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      console.error("Failed to copy:", error)
+    }
+  }
+
+  const getStatusInfo = (status: string) => {
     switch (status) {
       case "waiting":
         return {
-          color: "bg-blue-500",
-          icon: <Clock className="w-4 h-4" />,
-          text: "Waiting for Payment",
+          icon: <Clock className="h-5 w-5" />,
+          color: "bg-gradient-to-r from-blue-500 to-purple-500",
+          textColor: "text-blue-300",
+          bgColor: "bg-gradient-to-br from-blue-900/20 to-purple-900/20",
+          borderColor: "border-blue-500/30",
+          title: "Waiting for Payment",
+          description: "Please send the exact amount to the address below",
         }
       case "confirming":
-        return {
-          color: "bg-yellow-500",
-          icon: <Clock className="w-4 h-4" />,
-          text: "Confirming Payment",
-        }
+      case "partially_paid":
       case "confirmed":
+      case "sending":
+        return {
+          icon: <Loader2 className="h-5 w-5 animate-spin" />,
+          color: "bg-gradient-to-r from-purple-500 to-pink-500",
+          textColor: "text-purple-300",
+          bgColor: "bg-gradient-to-br from-purple-900/20 to-pink-900/20",
+          borderColor: "border-purple-500/30",
+          title: "Confirming Payment",
+          description: "Your payment has been detected and is being confirmed on the blockchain",
+        }
       case "finished":
         return {
-          color: "bg-green-500",
-          icon: <Clock className="w-4 h-4" />,
-          text: "Payment Confirmed",
+          icon: <CheckCircle className="h-5 w-5" />,
+          color: "bg-gradient-to-r from-green-500 to-emerald-500",
+          textColor: "text-green-300",
+          bgColor: "bg-gradient-to-br from-green-900/20 to-emerald-900/20",
+          borderColor: "border-green-500/30",
+          title: "Payment Completed",
+          description: "Your ticket has been generated and sent to your email",
         }
       case "cancelled":
         return {
-          color: "bg-red-500",
-          icon: <X className="w-4 h-4" />,
-          text: "Payment Cancelled",
+          icon: <X className="h-5 w-5" />,
+          color: "bg-gradient-to-r from-gray-500 to-slate-500",
+          textColor: "text-gray-300",
+          bgColor: "bg-gradient-to-br from-gray-900/20 to-slate-900/20",
+          borderColor: "border-gray-500/30",
+          title: "Payment Cancelled",
+          description: "This payment has been cancelled and the reservation released",
         }
       case "expired":
         return {
-          color: "bg-gray-500",
-          icon: <AlertTriangle className="w-4 h-4" />,
-          text: "Payment Expired",
+          icon: <AlertCircle className="h-5 w-5" />,
+          color: "bg-gradient-to-r from-orange-500 to-red-500",
+          textColor: "text-orange-300",
+          bgColor: "bg-gradient-to-br from-orange-900/20 to-red-900/20",
+          borderColor: "border-orange-500/30",
+          title: "Payment Expired",
+          description: "This payment has expired and the reservation has been released",
+        }
+      case "failed":
+      case "refunded":
+        return {
+          icon: <AlertCircle className="h-5 w-5" />,
+          color: "bg-gradient-to-r from-red-500 to-pink-500",
+          textColor: "text-red-300",
+          bgColor: "bg-gradient-to-br from-red-900/20 to-pink-900/20",
+          borderColor: "border-red-500/30",
+          title: "Payment Failed",
+          description: "There was an issue with your payment. Please try again.",
         }
       default:
         return {
-          color: "bg-gray-500",
-          icon: <Clock className="w-4 h-4" />,
-          text: "Unknown Status",
+          icon: <Clock className="h-5 w-5" />,
+          color: "bg-gradient-to-r from-blue-500 to-purple-500",
+          textColor: "text-blue-300",
+          bgColor: "bg-gradient-to-br from-blue-900/20 to-purple-900/20",
+          borderColor: "border-blue-500/30",
+          title: "Waiting for Payment",
+          description: "Please send the exact amount to the address below",
         }
     }
   }
 
-  const statusInfo = getStatusInfo()
-  const isWaiting = status === "waiting" && !isExpired
-  const showTimer = isWaiting && timeLeft !== null
-  const isLowTime = timeLeft !== null && timeLeft < 5 * 60 * 1000 // Less than 5 minutes
-
-  const content = (
-    <div className="space-y-6">
-      {/* Header with status and timer */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-full ${statusInfo.color} text-white`}>{statusInfo.icon}</div>
-          <div>
-            <h3 className="font-semibold text-white">{statusInfo.text}</h3>
-            <p className="text-sm text-gray-400">Please send the exact amount to the address below</p>
-          </div>
-        </div>
-
-        {/* Timer Display */}
-        {showTimer && (
-          <div className={`text-right ${isLowTime ? "text-red-400" : "text-white"}`}>
-            <div className="text-sm text-gray-400">Time remaining:</div>
-            <div className={`text-lg font-mono font-bold ${isLowTime ? "animate-pulse" : ""}`}>
-              {formatTimeLeft(timeLeft)}
-            </div>
-            {isLowTime && (
-              <div className="text-xs text-red-400 flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" />
-                Hurry up!
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Payment Details */}
-      {isWaiting && (
-        <>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Send exactly this amount:</label>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 font-mono text-white">
-                  {paymentData.payAmount} {paymentData.payCurrency.toUpperCase()}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => copyToClipboard(paymentData.payAmount, "Amount")}
-                  className="border-gray-600 hover:bg-gray-700"
-                >
-                  <Copy className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">To this address:</label>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 font-mono text-white break-all">
-                  {paymentData.payAddress}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => copyToClipboard(paymentData.payAddress, "Address")}
-                  className="border-gray-600 hover:bg-gray-700"
-                >
-                  <Copy className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {/* Cancel Button */}
-          <div className="flex justify-center">
-            <Button
-              variant="destructive"
-              onClick={handleCancel}
-              disabled={isCancelling}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              <X className="w-4 h-4 mr-2" />
-              {isCancelling ? "Cancelling..." : "Cancel Payment"}
-            </Button>
-          </div>
-        </>
-      )}
-
-      {/* Status Messages for non-waiting states */}
-      {!isWaiting && (
-        <div className="text-center py-8">
-          {status === "cancelled" && <p className="text-gray-400">Payment was cancelled and reservation released.</p>}
-          {status === "expired" && <p className="text-gray-400">Payment expired and reservation was released.</p>}
-          {(status === "confirmed" || status === "finished") && (
-            <p className="text-green-400">Payment confirmed! Check your email for tickets.</p>
-          )}
-        </div>
-      )}
-
-      {/* Footer with status and timestamp */}
-      <div className="flex items-center justify-between pt-4 border-t border-gray-700">
-        <Badge variant="secondary" className="bg-gray-700 text-gray-300">
-          {status === "waiting" ? "Waiting" : status.charAt(0).toUpperCase() + status.slice(1)}
-        </Badge>
-        <span className="text-sm text-gray-400">Last updated: {new Date().toLocaleTimeString()}</span>
-      </div>
-    </div>
-  )
-
-  if (showModal) {
+  if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-        <Card className="w-full max-w-md bg-gray-900 border-gray-700">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-white">Payment Tracking - {paymentData.ticketType} Pass</h2>
-              {onClose && (
-                <Button variant="ghost" size="sm" onClick={onClose} className="text-gray-400 hover:text-white">
-                  <X className="w-4 h-4" />
-                </Button>
-              )}
-            </div>
-            {content}
-            {!isWaiting && (
-              <div className="flex gap-2 mt-6">
-                <Button
-                  variant="outline"
-                  onClick={onClose}
-                  className="flex-1 border-gray-600 hover:bg-gray-700 bg-transparent"
-                >
-                  Close & Track Later
-                </Button>
-                <Button
-                  onClick={() => window.open(`/payment-tracker?payment=${paymentData.paymentId}`, "_blank")}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700"
-                >
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Open Tracker Page
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <Card className="border-blue-500/20">
+        <CardContent className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          <span>Loading payment status...</span>
+        </CardContent>
+      </Card>
     )
   }
 
+  if (error) {
+    return (
+      <Card className="border-red-500/20 bg-red-50/50">
+        <CardContent className="py-6">
+          <div className="flex items-center gap-2 text-red-700">
+            <AlertCircle className="h-5 w-5" />
+            <span>{error}</span>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (!paymentData) {
+    return (
+      <Card className="border-gray-500/20">
+        <CardContent className="py-6">
+          <div className="text-center text-gray-600">No payment data available</div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const statusInfo = getStatusInfo(paymentData.paymentStatus)
+
   return (
-    <Card className="bg-gray-900 border-gray-700">
-      <CardContent className="p-6">{content}</CardContent>
+    <Card className={cn("border-2", statusInfo.borderColor, statusInfo.bgColor)}>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-3">
+          <div className={cn("p-2 rounded-full", statusInfo.color, "text-white")}>{statusInfo.icon}</div>
+          <div className="flex-1">
+            <div className={cn("text-lg font-semibold", statusInfo.textColor)}>{statusInfo.title}</div>
+            <div className="text-sm text-muted-foreground">{statusInfo.description}</div>
+          </div>
+          {/* Timer Display */}
+          {timeRemaining !== null && timeRemaining > 0 && paymentData.paymentStatus === "waiting" && (
+            <div className="flex items-center gap-2 bg-gradient-to-r from-orange-500/20 to-red-500/20 px-3 py-2 rounded-lg border border-orange-500/30">
+              <Timer className="h-4 w-4 text-orange-400" />
+              <span className="text-sm font-mono text-orange-300">{formatTimeRemaining(timeRemaining)}</span>
+            </div>
+          )}
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {/* Expiration Warning */}
+        {timeRemaining !== null &&
+          timeRemaining > 0 &&
+          timeRemaining < 5 * 60 * 1000 &&
+          paymentData.paymentStatus === "waiting" && (
+            <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 p-4 rounded-lg border border-orange-500/30 backdrop-blur-sm">
+              <div className="flex items-center gap-2 text-orange-300">
+                <AlertCircle className="h-5 w-5" />
+                <span className="font-medium">Reservation Expiring Soon!</span>
+              </div>
+              <p className="text-sm text-orange-200 mt-1">
+                Your ticket reservation will expire in {formatTimeRemaining(timeRemaining)}. Complete your payment to
+                secure your tickets.
+              </p>
+            </div>
+          )}
+
+        {/* Payment Details - Show if waiting or confirming */}
+        {paymentData.payAddress &&
+          paymentData.payAmount &&
+          (paymentData.paymentStatus === "waiting" || paymentData.paymentStatus === "confirming") && (
+            <div className="space-y-4">
+              <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 p-4 rounded-lg border border-slate-700/50 backdrop-blur-sm">
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-sm font-medium text-slate-300">Send exactly this amount:</label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <code className="bg-gradient-to-r from-slate-700 to-slate-800 text-white px-3 py-2 rounded text-lg font-mono border border-slate-600">
+                        {paymentData.payAmount} {paymentData.payCurrency?.toUpperCase()}
+                      </code>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => copyToClipboard(paymentData.payAmount?.toString() || "")}
+                        className="border-slate-600 hover:bg-slate-700"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-slate-300">To this address:</label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <code className="bg-gradient-to-r from-slate-700 to-slate-800 text-white px-3 py-2 rounded text-sm font-mono break-all flex-1 border border-slate-600">
+                        {paymentData.payAddress}
+                      </code>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => copyToClipboard(paymentData.payAddress || "")}
+                        className="border-slate-600 hover:bg-slate-700"
+                      >
+                        {copied ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Cancel Button - Only show for waiting payments */}
+              {paymentData.paymentStatus === "waiting" && (
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    onClick={handleCancel}
+                    disabled={cancelling}
+                    className="border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-500 bg-transparent"
+                  >
+                    {cancelling ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Cancelling...
+                      </>
+                    ) : (
+                      <>
+                        <X className="h-4 w-4 mr-2" />
+                        Cancel Payment
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {/* Payment Progress */}
+              {paymentData.actuallyPaid !== undefined &&
+                paymentData.actuallyPaid > 0 &&
+                paymentData.payAmount !== undefined && (
+                  <div className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 p-4 rounded-lg border border-blue-500/30 backdrop-blur-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-blue-300">Amount Received:</span>
+                      <span className="text-sm font-mono text-blue-100">
+                        {paymentData.actuallyPaid} {paymentData.payCurrency?.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="mt-2">
+                      <div className="w-full bg-slate-700 rounded-full h-2">
+                        <div
+                          className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
+                          style={{
+                            width: `${Math.min((paymentData.actuallyPaid / paymentData.payAmount) * 100, 100)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+            </div>
+          )}
+
+        {/* Status Badge */}
+        <div className="flex items-center justify-between">
+          <Badge variant="outline" className={cn("capitalize", statusInfo.textColor)}>
+            {paymentData.paymentStatus.replace("_", " ")}
+          </Badge>
+          {paymentData.updatedAt && (
+            <span className="text-xs text-muted-foreground">
+              Last updated: {new Date(paymentData.updatedAt).toLocaleTimeString()}
+            </span>
+          )}
+        </div>
+
+        {paymentData.paymentStatus === "finished" && (
+          <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 p-4 rounded-lg border border-green-500/30 backdrop-blur-sm">
+            <div className="flex items-center gap-2 text-green-300">
+              <CheckCircle className="h-5 w-5" />
+              <span className="font-medium">Payment Successful!</span>
+            </div>
+            <p className="text-sm text-green-200 mt-1">
+              Your ticket has been generated and sent to your email address.
+            </p>
+          </div>
+        )}
+
+        {(paymentData.paymentStatus === "cancelled" || paymentData.paymentStatus === "expired") && (
+          <div className="bg-gradient-to-br from-gray-900/30 to-slate-900/30 p-4 rounded-lg border border-gray-500/30 backdrop-blur-sm">
+            <div className="flex items-center gap-2 text-gray-300">
+              <AlertCircle className="h-5 w-5" />
+              <span className="font-medium">
+                {paymentData.paymentStatus === "cancelled" ? "Payment Cancelled" : "Payment Expired"}
+              </span>
+            </div>
+            <p className="text-sm text-gray-200 mt-1">
+              The ticket reservation has been released and is now available for others to purchase.
+            </p>
+          </div>
+        )}
+      </CardContent>
     </Card>
   )
 }

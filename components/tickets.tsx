@@ -42,9 +42,9 @@ const ticketTypes = [
   {
     id: "1-day",
     name: "1-Day Pass",
-    price: 75,
-    originalPrice: null,
-    description: "Perfect for a single day experience",
+    price: 1, // $1 for testing
+    originalPrice: 75, // Show original price crossed out
+    description: "Perfect for a single day experience (TESTING PRICE)",
     icon: <Zap className="h-6 w-6" />,
     color: "from-blue-500/5 to-transparent border-blue-500/20",
     buttonColor: "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700",
@@ -58,6 +58,7 @@ const ticketTypes = [
       "Access to vendor marketplace",
       "Networking opportunities",
       "Event swag bag",
+      "🧪 TESTING PRICE - Only $1!",
     ],
   },
   {
@@ -238,6 +239,14 @@ export function Tickets() {
             <AlertCircle className="h-4 w-4" />
             <span>Pay with any cryptocurrency • Secure NOWPayments processing</span>
           </motion.div>
+          <motion.div
+            variants={itemVariants}
+            className="mt-4 bg-gradient-to-r from-green-500/10 to-blue-500/10 border border-green-500/20 rounded-lg p-3 max-w-md mx-auto"
+          >
+            <p className="text-sm font-medium text-green-600 dark:text-green-400">
+              🧪 Testing Mode: 1-Day Pass only $1 for development testing!
+            </p>
+          </motion.div>
         </motion.div>
 
         {/* Ticket Cards Container with Animated Outline */}
@@ -291,6 +300,13 @@ export function Tickets() {
                           </Badge>
                         </div>
                       )}
+                      {ticket.id === "1-day" && (
+                        <div className="absolute -top-4 right-4 z-10">
+                          <Badge className="bg-gradient-to-r from-green-500 to-blue-500 text-white border-0 px-3 py-1 text-xs">
+                            🧪 Test Price
+                          </Badge>
+                        </div>
+                      )}
                       {isSoldOut && (
                         <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-10">
                           <Badge className="bg-red-500 text-white border-0 px-4 py-1">Sold Out</Badge>
@@ -328,7 +344,9 @@ export function Tickets() {
                             {ticket.features.map((feature, featureIndex) => (
                               <li key={featureIndex} className="flex items-start gap-2 text-sm">
                                 <Check className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                                <span>{feature}</span>
+                                <span className={feature.includes("🧪") ? "text-green-600 font-medium" : ""}>
+                                  {feature}
+                                </span>
                               </li>
                             ))}
                           </ul>
@@ -403,6 +421,11 @@ export function Tickets() {
                 <p className="text-sm text-muted-foreground">
                   Questions? Contact us at events@kaspafunding.com • Early bird pricing ends October 15th, 2025
                 </p>
+                <div className="mt-4 bg-gradient-to-r from-green-500/10 to-blue-500/10 border border-green-500/20 rounded-lg p-3">
+                  <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                    🧪 Development Testing: 1-Day Pass is temporarily $1 for payment system testing
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>

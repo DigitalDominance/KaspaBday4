@@ -22,6 +22,13 @@ export class NOWPaymentsAPI {
     return response.json()
   }
 
+  async getFullCurrencies() {
+    const response = await fetch(`${NOWPAYMENTS_API_URL}/full-currencies`, {
+      headers: this.headers,
+    })
+    return response.json()
+  }
+
   async getMinAmount(currencyFrom: string, currencyTo = "usd") {
     const response = await fetch(
       `${NOWPAYMENTS_API_URL}/min-amount?currency_from=${currencyFrom}&currency_to=${currencyTo}`,

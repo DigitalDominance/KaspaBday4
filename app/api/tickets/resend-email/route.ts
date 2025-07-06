@@ -2,8 +2,6 @@ import { type NextRequest, NextResponse } from "next/server"
 import { connectToDatabase } from "@/lib/mongodb"
 import { sendTicketEmail } from "@/lib/email"
 
-const EMAIL_COOLDOWN_MS = 60 * 60 * 1000 // 1 hour in milliseconds
-
 export async function POST(request: NextRequest) {
   try {
     const { orderId } = await request.json()
@@ -15,37 +13,32 @@ export async function POST(request: NextRequest) {
     const { db } = await connectToDatabase()
 
     // Find the ticket
-    const ticket = await db.collection("kaspa_birthday_tickets").findOne({
-      orderId: orderId,
-    })
+    const ticket = await db.collection("kaspa_birthday_tickets").findOne({ orderId })
 
     if (!ticket) {
       return NextResponse.json({ success: false, error: "Ticket not found" }, { status: 404 })
     }
 
+    // Check if payment is finished
     if (ticket.paymentStatus !== "finished") {
-      return NextResponse.json({ success: false, error: "Payment not completed yet" }, { status: 400 })
+      return NextResponse.json({ success: false, error: "Payment not completed" }, { status: 400 })
     }
 
-    // Check email cooldown
-    const now = new Date()
+    // Check cooldown (1 hour = 3600 seconds)
     const lastEmailSent = ticket.lastEmailSent ? new Date(ticket.lastEmailSent) : null
+    const now = new Date()
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000)
 
-    if (lastEmailSent) {
-      const timeSinceLastEmail = now.getTime() - lastEmailSent.getTime()
-
-      if (timeSinceLastEmail < EMAIL_COOLDOWN_MS) {
-        const remainingTime = Math.ceil((EMAIL_COOLDOWN_MS - timeSinceLastEmail) / 1000)
-
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Email cooldown active",
-            remainingTime,
-          },
-          { status: 429 },
-        )
-      }
+    if (lastEmailSent && lastEmailSent > oneHourAgo) {
+      const remainingTime = Math.ceil((lastEmailSent.getTime() + 60 * 60 * 1000 - now.getTime()) / 1000)
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Email cooldown active",
+          remainingTime,
+        },
+        { status: 429 },
+      )
     }
 
     // Send the email
@@ -54,7 +47,6 @@ export async function POST(request: NextRequest) {
       customerName: ticket.customerName,
       customerEmail: ticket.customerEmail,
       ticketType: ticket.ticketType,
-      ticketName: ticket.ticketName,
       quantity: ticket.quantity,
       totalAmount: ticket.totalAmount,
     })
@@ -65,22 +57,17 @@ export async function POST(request: NextRequest) {
 
     // Update last email sent timestamp
     await db.collection("kaspa_birthday_tickets").updateOne(
-      { orderId: orderId },
+      { orderId },
       {
         $set: {
           lastEmailSent: now,
-          emailSentCount: (ticket.emailSentCount || 0) + 1,
         },
       },
     )
 
-    return NextResponse.json({
-      success: true,
-      message: "Email sent successfully",
-    })
+    return NextResponse.json({ success: true, message: "Email sent successfully" })
   } catch (error) {
-    console.error("Error resending ticket email:", error)
-
+    console.error("Error resending email:", error)
     return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 })
   }
 }

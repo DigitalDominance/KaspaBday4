@@ -1,10 +1,10 @@
 import { connectToDatabase } from "./mongodb"
 
 export interface TicketStock {
-  ticketType: string
-  totalAvailable: number
-  sold: number
-  remaining: number
+  type: string
+  available: number
+  total: number
+  soldOut: boolean
 }
 
 const TICKET_LIMITS = {
@@ -37,15 +37,16 @@ export async function getTicketStock(): Promise<TicketStock[]> {
       .toArray()
 
     // Create stock array for all ticket types
-    const stockData: TicketStock[] = Object.entries(TICKET_LIMITS).map(([ticketType, totalAvailable]) => {
+    const stockData: TicketStock[] = Object.entries(TICKET_LIMITS).map(([ticketType, totalLimit]) => {
       const soldData = soldTickets.find((item) => item._id === ticketType)
       const sold = soldData ? soldData.totalSold : 0
+      const available = Math.max(0, totalLimit - sold)
 
       return {
-        ticketType,
-        totalAvailable,
-        sold,
-        remaining: Math.max(0, totalAvailable - sold),
+        type: ticketType,
+        available,
+        total: totalLimit,
+        soldOut: available === 0,
       }
     })
 
@@ -53,11 +54,11 @@ export async function getTicketStock(): Promise<TicketStock[]> {
   } catch (error) {
     console.error("Error getting ticket stock:", error)
     // Return default stock data on error
-    return Object.entries(TICKET_LIMITS).map(([ticketType, totalAvailable]) => ({
-      ticketType,
-      totalAvailable,
-      sold: 0,
-      remaining: totalAvailable,
+    return Object.entries(TICKET_LIMITS).map(([ticketType, totalLimit]) => ({
+      type: ticketType,
+      available: totalLimit,
+      total: totalLimit,
+      soldOut: false,
     }))
   }
 }
@@ -65,15 +66,36 @@ export async function getTicketStock(): Promise<TicketStock[]> {
 export async function checkTicketAvailability(ticketType: string, quantity: number): Promise<boolean> {
   try {
     const stock = await getTicketStock()
-    const ticketStock = stock.find((s) => s.ticketType === ticketType)
+    const ticketStock = stock.find((s) => s.type === ticketType)
 
     if (!ticketStock) {
       return false
     }
 
-    return ticketStock.remaining >= quantity
+    return ticketStock.available >= quantity
   } catch (error) {
     console.error("Error checking ticket availability:", error)
     return false
+  }
+}
+
+// Legacy function for backward compatibility
+export async function getAllTicketStock() {
+  return await getTicketStock()
+}
+
+export async function getTicketStock_old(ticketType: string) {
+  const stock = await getTicketStock()
+  const ticketStock = stock.find((s) => s.type === ticketType)
+
+  if (!ticketStock) {
+    const max = TICKET_LIMITS[ticketType as keyof typeof TICKET_LIMITS] || 0
+    return { max, sold: 0, available: max }
+  }
+
+  return {
+    max: ticketStock.total,
+    sold: ticketStock.total - ticketStock.available,
+    available: ticketStock.available,
   }
 }

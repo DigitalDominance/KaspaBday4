@@ -5,19 +5,15 @@ export async function GET() {
   try {
     const stock = await getTicketStock()
 
-    return NextResponse.json({
-      success: true,
-      stock,
+    return NextResponse.json(stock, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+      },
     })
   } catch (error) {
     console.error("Error fetching ticket stock:", error)
 
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to fetch ticket stock",
-      },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: "Failed to fetch ticket stock" }, { status: 500 })
   }
 }

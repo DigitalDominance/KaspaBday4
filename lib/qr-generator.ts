@@ -47,7 +47,7 @@ export async function generateQRCodeSVG(data: TicketData): Promise<string> {
         dark: "#000000",
         light: "#FFFFFF",
       },
-      width: 256,
+      width: 200,
     })
 
     return qrCodeSVG
@@ -57,39 +57,21 @@ export async function generateQRCodeSVG(data: TicketData): Promise<string> {
   }
 }
 
-export function generateTicketText(data: TicketData): string {
-  return `
-KASPA 4TH BIRTHDAY CELEBRATION
-================================
-
-TICKET INFORMATION
-------------------
-Order ID: ${data.orderId}
-Customer: ${data.customerName}
-Ticket Type: ${data.ticketType}
-Quantity: ${data.quantity}
-
-EVENT DETAILS
--------------
-Event: ${data.event}
-Date: ${data.date}
-Venue: ${data.venue}
-
-QR CODE DATA
-------------
-${JSON.stringify(data, null, 2)}
-
-IMPORTANT NOTES
----------------
-• Present this ticket (digital or printed) at the event entrance
-• Bring a valid ID for verification
-• Tickets are non-refundable but transferable
-• Contact tickets@kaspaevents.xyz for questions
-
-Generated: ${new Date().toLocaleString()}
-Verified: ${data.verified ? "✓" : "✗"}
-
-================================
-Thank you for celebrating with us!
-  `.trim()
+export function createTicketData(
+  orderId: string,
+  customerName: string,
+  ticketType: string,
+  quantity: number,
+): TicketData {
+  return {
+    orderId,
+    customerName,
+    ticketType,
+    quantity,
+    event: "Kaspa 4th Birthday Celebration",
+    date: "November 7-9, 2025",
+    venue: "Kaspa Community Center, Liverpool, NY",
+    verified: true,
+    timestamp: Date.now(),
+  }
 }

@@ -32,19 +32,6 @@ interface PaymentInfo {
   paymentStatus: string
 }
 
-interface Currency {
-  id: number
-  code: string
-  name: string
-  enable: boolean
-  logo_url: string
-  priority: number
-  network?: string
-  available_for_payment: boolean
-  is_popular?: boolean
-  ticker?: string
-}
-
 export function TicketPurchaseModal({
   isOpen,
   onClose,
@@ -54,15 +41,14 @@ export function TicketPurchaseModal({
 }: TicketPurchaseModalProps) {
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
-  const [currencies, setCurrencies] = useState<Currency[]>([])
-  const [filteredCurrencies, setFilteredCurrencies] = useState<Currency[]>([])
+  const [currencies, setCurrencies] = useState<string[]>([])
+  const [filteredCurrencies, setFilteredCurrencies] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [customerInfo, setCustomerInfo] = useState({
     name: "",
     email: "",
   })
   const [selectedCurrency, setSelectedCurrency] = useState("")
-  const [selectedCurrencyData, setSelectedCurrencyData] = useState<Currency | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
   const [copied, setCopied] = useState(false)
@@ -77,11 +63,7 @@ export function TicketPurchaseModal({
   // Filter currencies based on search
   useEffect(() => {
     if (searchTerm) {
-      const filtered = currencies.filter(
-        (currency) =>
-          currency.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          currency.name.toLowerCase().includes(searchTerm.toLowerCase()),
-      )
+      const filtered = currencies.filter((currency) => currency.toLowerCase().includes(searchTerm.toLowerCase()))
       setFilteredCurrencies(filtered)
     } else {
       setFilteredCurrencies(currencies)
@@ -92,37 +74,8 @@ export function TicketPurchaseModal({
     try {
       const response = await fetch("/api/nowpayments/currencies")
       const data = await response.json()
-
-      if (data.currencies) {
-        // Sort currencies: KAS first, then BTC, then ETH, then by popularity, then alphabetically
-        const sortedCurrencies = data.currencies.sort((a: Currency, b: Currency) => {
-          // Priority order for specific currencies
-          const priorityOrder: { [key: string]: number } = {
-            KAS: 1,
-            BTC: 2,
-            ETH: 3,
-            USDT: 4,
-            USDC: 5,
-          }
-
-          const aPriority = priorityOrder[a.code] || 999
-          const bPriority = priorityOrder[b.code] || 999
-
-          if (aPriority !== bPriority) {
-            return aPriority - bPriority
-          }
-
-          // If same priority, sort by popularity then alphabetically
-          if (a.is_popular !== b.is_popular) {
-            return b.is_popular ? 1 : -1
-          }
-
-          return a.code.localeCompare(b.code)
-        })
-
-        setCurrencies(sortedCurrencies)
-        setFilteredCurrencies(sortedCurrencies)
-      }
+      setCurrencies(data.currencies || [])
+      setFilteredCurrencies(data.currencies || [])
     } catch (error) {
       console.error("Failed to fetch currencies:", error)
     }
@@ -133,11 +86,6 @@ export function TicketPurchaseModal({
     if (customerInfo.name && customerInfo.email) {
       setStep(2)
     }
-  }
-
-  const handleCurrencySelect = (currency: Currency) => {
-    setSelectedCurrency(currency.code)
-    setSelectedCurrencyData(currency)
   }
 
   const handlePurchase = async () => {
@@ -190,23 +138,6 @@ export function TicketPurchaseModal({
     hidden: { opacity: 0, x: 20 },
     visible: { opacity: 1, x: 0 },
     exit: { opacity: 0, x: -20 },
-  }
-
-  const getCurrencyBadge = (code: string) => {
-    switch (code) {
-      case "KAS":
-        return <Badge className="bg-blue-500 text-white text-xs px-2 py-0">Kaspa</Badge>
-      case "BTC":
-        return <Badge className="bg-orange-500 text-white text-xs px-2 py-0">Bitcoin</Badge>
-      case "ETH":
-        return <Badge className="bg-blue-600 text-white text-xs px-2 py-0">Ethereum</Badge>
-      case "USDT":
-        return <Badge className="bg-green-500 text-white text-xs px-2 py-0">Tether</Badge>
-      case "USDC":
-        return <Badge className="bg-blue-400 text-white text-xs px-2 py-0">USD Coin</Badge>
-      default:
-        return null
-    }
   }
 
   return (
@@ -350,7 +281,7 @@ export function TicketPurchaseModal({
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
-                        placeholder="Search for Kaspa, Bitcoin, Ethereum..."
+                        placeholder="Search for Bitcoin, Ethereum, Kaspa..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="pl-10 border-purple-500/20 focus:border-purple-500"
@@ -362,91 +293,25 @@ export function TicketPurchaseModal({
                   <div className="space-y-2">
                     <Label>Available Cryptocurrencies ({filteredCurrencies.length})</Label>
                     <div className="max-h-48 overflow-y-auto border rounded-lg p-2 bg-background/50">
-                      <div className="grid grid-cols-1 gap-2">
+                      <div className="grid grid-cols-2 gap-2">
                         {filteredCurrencies.map((currency) => (
                           <button
-                            key={currency.code}
-                            onClick={() => handleCurrencySelect(currency)}
+                            key={currency}
+                            onClick={() => setSelectedCurrency(currency)}
                             className={cn(
-                              "p-3 rounded-lg border text-left transition-all duration-200 hover:scale-105 flex items-center gap-3",
-                              selectedCurrency === currency.code
+                              "p-3 rounded-lg border text-left transition-all duration-200 hover:scale-105",
+                              selectedCurrency === currency
                                 ? "border-purple-500 bg-gradient-to-r from-purple-500/10 to-pink-500/10"
                                 : "border-border hover:border-purple-500/50",
                             )}
                           >
-                            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center overflow-hidden">
-                              <img
-                                src={`https://api.nowpayments.io${currency.logo_url}`}
-                                alt={currency.name}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  // Fallback to text-based icon if logo fails to load
-                                  const target = e.currentTarget
-                                  target.style.display = "none"
-                                  const parent = target.parentElement
-                                  if (parent && !parent.querySelector(".fallback-icon")) {
-                                    const fallback = document.createElement("div")
-                                    fallback.className =
-                                      "fallback-icon w-full h-full flex items-center justify-center text-xs font-bold text-white bg-gradient-to-br from-blue-500 to-purple-500"
-                                    fallback.textContent = currency.code.charAt(0)
-                                    parent.appendChild(fallback)
-                                  }
-                                }}
-                              />
-                            </div>
-                            <div className="flex-1">
-                              <div className="font-medium text-sm flex items-center gap-2">
-                                {currency.code.toUpperCase()}
-                                {getCurrencyBadge(currency.code)}
-                                {currency.is_popular && (
-                                  <Badge variant="secondary" className="text-xs px-1 py-0">
-                                    Popular
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="text-xs text-muted-foreground">{currency.name}</div>
-                              {currency.network && (
-                                <div className="text-xs text-muted-foreground capitalize">
-                                  Network: {currency.network}
-                                </div>
-                              )}
-                            </div>
+                            <div className="font-medium text-sm">{currency.toUpperCase()}</div>
+                            <div className="text-xs text-muted-foreground">{currency}</div>
                           </button>
                         ))}
                       </div>
                     </div>
                   </div>
-
-                  {/* Selected Currency Display */}
-                  {selectedCurrencyData && (
-                    <div className="bg-gradient-to-r from-green-500/10 to-blue-500/10 p-3 rounded-lg border border-green-500/20">
-                      <div className="flex items-center gap-3">
-                        <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center overflow-hidden">
-                          <img
-                            src={`https://api.nowpayments.io${selectedCurrencyData.logo_url}`}
-                            alt={selectedCurrencyData.name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              const target = e.currentTarget
-                              target.style.display = "none"
-                              const parent = target.parentElement
-                              if (parent && !parent.querySelector(".fallback-icon")) {
-                                const fallback = document.createElement("div")
-                                fallback.className =
-                                  "fallback-icon w-full h-full flex items-center justify-center text-xs font-bold text-white bg-gradient-to-br from-blue-500 to-purple-500"
-                                fallback.textContent = selectedCurrencyData.code.charAt(0)
-                                parent.appendChild(fallback)
-                              }
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <div className="font-medium text-sm">Selected: {selectedCurrencyData.code.toUpperCase()}</div>
-                          <div className="text-xs text-muted-foreground">{selectedCurrencyData.name}</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
                   {/* Order Summary */}
                   <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 p-4 rounded-lg border border-blue-500/20">
@@ -470,11 +335,6 @@ export function TicketPurchaseModal({
                           ${totalAmount}
                         </span>
                       </div>
-                      {ticketPrice === 1 && (
-                        <div className="text-xs text-green-600 dark:text-green-400 font-medium">
-                          🧪 Testing price - normally $75
-                        </div>
-                      )}
                     </div>
                   </div>
 
@@ -495,7 +355,7 @@ export function TicketPurchaseModal({
                       ) : (
                         <>
                           <CreditCard className="h-4 w-4 mr-2" />
-                          Pay with {selectedCurrency}
+                          Pay with {selectedCurrency?.toUpperCase()}
                         </>
                       )}
                     </Button>
@@ -529,7 +389,7 @@ export function TicketPurchaseModal({
                     <p className="text-muted-foreground mb-4">
                       Send exactly{" "}
                       <strong>
-                        {paymentInfo.payAmount} {paymentInfo.payCurrency?.toUpperCase() || selectedCurrency}
+                        {paymentInfo.payAmount} {paymentInfo.payCurrency.toUpperCase()}
                       </strong>{" "}
                       to the address below
                     </p>
@@ -558,7 +418,7 @@ export function TicketPurchaseModal({
                     <Label className="text-sm font-medium mb-2 block">Amount to Send</Label>
                     <div className="flex items-center justify-between">
                       <span className="text-2xl font-bold">
-                        {paymentInfo.payAmount} {paymentInfo.payCurrency?.toUpperCase() || selectedCurrency}
+                        {paymentInfo.payAmount} {paymentInfo.payCurrency.toUpperCase()}
                       </span>
                       <Button
                         size="sm"

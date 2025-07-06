@@ -1,30 +1,40 @@
 import { NextResponse } from "next/server"
+import { NOWPaymentsAPI } from "@/lib/nowpayments"
 
 export async function GET() {
   try {
-    const response = await fetch("https://api.nowpayments.io/v1/currencies", {
-      headers: {
-        "x-api-key": process.env.NOWPAYMENTS_API_KEY!,
-      },
-    })
+    const nowPayments = new NOWPaymentsAPI()
+    const response = await nowPayments.getCurrencies()
 
-    if (!response.ok) {
-      throw new Error("Failed to fetch currencies")
+    if (response.currencies) {
+      // Sort currencies to put KAS first
+      const currencies = response.currencies.sort((a: string, b: string) => {
+        if (a.toLowerCase() === "kas") return -1
+        if (b.toLowerCase() === "kas") return 1
+        return a.localeCompare(b)
+      })
+
+      return NextResponse.json({
+        success: true,
+        currencies,
+      })
     }
 
-    const data = await response.json()
-    let currencies = data.currencies || []
-
-    // Ensure KAS is first in the list
-    currencies = currencies.filter((currency: string) => currency.toLowerCase() !== "kas")
-    currencies.unshift("kas")
-
-    return NextResponse.json({
-      success: true,
-      currencies,
-    })
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Failed to fetch currencies",
+      },
+      { status: 500 },
+    )
   } catch (error) {
-    console.error("Currencies fetch error:", error)
-    return NextResponse.json({ error: "Failed to fetch currencies" }, { status: 500 })
+    console.error("Currencies API error:", error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Failed to fetch currencies",
+      },
+      { status: 500 },
+    )
   }
 }

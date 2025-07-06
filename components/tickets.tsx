@@ -1,11 +1,13 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Check, Star, Crown, Zap, Gift } from "lucide-react"
+import { Check, Star, Crown, Zap, Gift, AlertCircle } from "lucide-react"
 import { ElegantShape } from "@/components/ui/elegant-shape"
+import { TicketPurchaseModal } from "@/components/ticket-purchase-modal"
 import { Space_Grotesk } from "next/font/google"
 import { cn } from "@/lib/utils"
 
@@ -38,14 +40,16 @@ const itemVariants = {
 
 const ticketTypes = [
   {
+    id: "1-day",
     name: "1-Day Pass",
-    price: "$75",
+    price: 75,
     originalPrice: null,
     description: "Perfect for a single day experience",
     icon: <Zap className="h-6 w-6" />,
     color: "from-blue-500/5 to-transparent border-blue-500/20",
     buttonColor: "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700",
     popular: false,
+    maxStock: 50,
     features: [
       "Access to one full day (Nov 7, 8, or 9)",
       "All workshops and presentations",
@@ -57,14 +61,16 @@ const ticketTypes = [
     ],
   },
   {
+    id: "2-day",
     name: "2-Day Pass",
-    price: "$125",
-    originalPrice: "$150",
+    price: 125,
+    originalPrice: 150,
     description: "Great value for weekend experience",
     icon: <Star className="h-6 w-6" />,
     color: "from-purple-500/5 to-transparent border-purple-500/20",
     buttonColor: "from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700",
     popular: true,
+    maxStock: 30,
     features: [
       "Access to any 2 days (Nov 7-9)",
       "All workshops and presentations",
@@ -76,14 +82,16 @@ const ticketTypes = [
     ],
   },
   {
+    id: "3-day",
     name: "3-Day Pass",
-    price: "$175",
-    originalPrice: "$225",
+    price: 175,
+    originalPrice: 225,
     description: "Complete celebration experience",
     icon: <Crown className="h-6 w-6" />,
     color: "from-blue-500/5 to-purple-500/5 border-blue-500/20",
     buttonColor: "from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700",
     popular: false,
+    maxStock: 20,
     features: [
       "Full access to all 3 days (Nov 7-9)",
       "All workshops and presentations",
@@ -96,14 +104,16 @@ const ticketTypes = [
     ],
   },
   {
+    id: "vip",
     name: "VIP Pass",
-    price: "$299",
+    price: 299,
     originalPrice: null,
     description: "Premium experience with exclusive perks",
     icon: <Gift className="h-6 w-6" />,
     color: "from-purple-500/5 to-pink-500/5 border-purple-500/20",
     buttonColor: "from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700",
     popular: false,
+    maxStock: 10,
     features: [
       "Full access to all 3 days (Nov 7-9)",
       "All workshops and presentations",
@@ -119,6 +129,45 @@ const ticketTypes = [
 ]
 
 export function Tickets() {
+  const [ticketStock, setTicketStock] = useState<
+    Record<string, { available: number; total: number; soldOut: boolean }>
+  >({})
+  const [selectedTicket, setSelectedTicket] = useState<(typeof ticketTypes)[0] | null>(null)
+  const [purchaseModalOpen, setPurchaseModalOpen] = useState(false)
+
+  useEffect(() => {
+    fetchTicketStock()
+  }, [])
+
+  const fetchTicketStock = async () => {
+    try {
+      const response = await fetch("/api/tickets/stock")
+      const stock = await response.json()
+      const stockMap = stock.reduce((acc: any, item: any) => {
+        acc[item.type] = {
+          available: item.available,
+          total: item.total,
+          soldOut: item.soldOut,
+        }
+        return acc
+      }, {})
+      setTicketStock(stockMap)
+    } catch (error) {
+      console.error("Failed to fetch ticket stock:", error)
+    }
+  }
+
+  const handleTicketPurchase = (ticket: (typeof ticketTypes)[0]) => {
+    setSelectedTicket(ticket)
+    setPurchaseModalOpen(true)
+  }
+
+  const getTicketAvailability = (ticketId: string) => {
+    const stock = ticketStock[ticketId]
+    if (!stock) return { available: 0, total: 0, soldOut: false }
+    return stock
+  }
+
   return (
     <section
       id="tickets"
@@ -179,9 +228,16 @@ export function Tickets() {
           >
             Get Your Tickets
           </motion.h2>
-          <motion.p variants={itemVariants} className="text-lg text-muted-foreground max-w-2xl mx-auto">
+          <motion.p variants={itemVariants} className="text-lg text-muted-foreground max-w-2xl mx-auto mb-4">
             Choose the perfect pass for your Kaspa celebration experience • November 7-9, 2025
           </motion.p>
+          <motion.div
+            variants={itemVariants}
+            className="flex items-center justify-center gap-2 text-sm text-muted-foreground"
+          >
+            <AlertCircle className="h-4 w-4" />
+            <span>Pay with any cryptocurrency • Secure NOWPayments processing</span>
+          </motion.div>
         </motion.div>
 
         {/* Ticket Cards Container with Animated Outline */}
@@ -222,62 +278,82 @@ export function Tickets() {
             {/* Content */}
             <div className="relative z-10">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {ticketTypes.map((ticket, index) => (
-                  <motion.div key={ticket.name} variants={itemVariants} className="relative">
-                    {ticket.popular && (
-                      <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-10">
-                        <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 px-4 py-1">
-                          Most Popular
-                        </Badge>
-                      </div>
-                    )}
-                    <Card className={`h-full bg-gradient-to-br ${ticket.color} relative overflow-hidden`}>
-                      <CardHeader className="text-center pb-4">
-                        <div
-                          className={cn(
-                            "p-4 rounded-lg bg-gradient-to-r text-white mb-4 flex flex-col items-center gap-2",
-                            ticket.buttonColor,
-                          )}
-                        >
-                          {ticket.icon}
-                          <CardTitle className="text-xl font-space-grotesk text-white">{ticket.name}</CardTitle>
+                {ticketTypes.map((ticket, index) => {
+                  const availability = getTicketAvailability(ticket.id)
+                  const isSoldOut = availability.soldOut
+
+                  return (
+                    <motion.div key={ticket.name} variants={itemVariants} className="relative">
+                      {ticket.popular && !isSoldOut && (
+                        <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-10">
+                          <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 px-4 py-1">
+                            Most Popular
+                          </Badge>
                         </div>
-                        <p className="text-sm text-muted-foreground">{ticket.description}</p>
-                        <div className="flex items-center justify-center gap-2 mt-4">
-                          <span className="text-3xl font-bold">{ticket.price}</span>
-                          {ticket.originalPrice && (
-                            <span className="text-lg text-muted-foreground line-through">{ticket.originalPrice}</span>
-                          )}
+                      )}
+                      {isSoldOut && (
+                        <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-10">
+                          <Badge className="bg-red-500 text-white border-0 px-4 py-1">Sold Out</Badge>
                         </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <ul className="space-y-2">
-                          {ticket.features.map((feature, featureIndex) => (
-                            <li key={featureIndex} className="flex items-start gap-2 text-sm">
-                              <Check className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                              <span>{feature}</span>
-                            </li>
-                          ))}
-                        </ul>
-                        <Button
-                          className={cn(
-                            `w-full bg-gradient-to-r ${ticket.buttonColor} text-white border-0`,
-                            spaceGrotesk.className,
-                          )}
-                          size="lg"
-                        >
-                          Buy {ticket.name}
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
+                      )}
+                      <Card
+                        className={`h-full bg-gradient-to-br ${ticket.color} relative overflow-hidden ${isSoldOut ? "opacity-60" : ""}`}
+                      >
+                        {isSoldOut && <div className="absolute inset-0 bg-black/20 z-5" />}
+                        <CardHeader className="text-center pb-4">
+                          <div
+                            className={cn(
+                              "p-4 rounded-lg bg-gradient-to-r text-white mb-4 flex flex-col items-center gap-2",
+                              ticket.buttonColor,
+                            )}
+                          >
+                            {ticket.icon}
+                            <CardTitle className="text-xl font-space-grotesk text-white">{ticket.name}</CardTitle>
+                          </div>
+                          <p className="text-sm text-muted-foreground">{ticket.description}</p>
+                          <div className="flex items-center justify-center gap-2 mt-4">
+                            <span className="text-3xl font-bold">${ticket.price}</span>
+                            {ticket.originalPrice && (
+                              <span className="text-lg text-muted-foreground line-through">
+                                ${ticket.originalPrice}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-2">
+                            {availability.available} of {availability.total} remaining
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <ul className="space-y-2">
+                            {ticket.features.map((feature, featureIndex) => (
+                              <li key={featureIndex} className="flex items-start gap-2 text-sm">
+                                <Check className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                                <span>{feature}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          <Button
+                            className={cn(
+                              `w-full bg-gradient-to-r ${ticket.buttonColor} text-white border-0`,
+                              spaceGrotesk.className,
+                            )}
+                            size="lg"
+                            disabled={isSoldOut}
+                            onClick={() => handleTicketPurchase(ticket)}
+                          >
+                            {isSoldOut ? "Sold Out" : `Buy ${ticket.name}`}
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  )
+                })}
               </div>
             </div>
           </div>
         </motion.div>
 
-        {/* Additional Info - Redesigned with emojis and better styling */}
+        {/* Additional Info */}
         <motion.div
           variants={itemVariants}
           initial="hidden"
@@ -286,7 +362,6 @@ export function Tickets() {
           className="text-center"
         >
           <Card className="border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-purple-500/5 max-w-4xl mx-auto relative overflow-hidden">
-            {/* Animated Border for consistency */}
             <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 p-[1px]">
               <div className="h-full w-full rounded-xl bg-background" />
             </div>
@@ -314,12 +389,12 @@ export function Tickets() {
                 </div>
                 <div className="space-y-3">
                   <h4 className={cn("font-semibold text-purple-400 mb-4 text-lg", spaceGrotesk.className)}>
-                    Ticket Policies
+                    Payment & Policies
                   </h4>
                   <div className="space-y-2">
+                    <p className="text-foreground">Pay with 100+ cryptocurrencies</p>
+                    <p className="text-foreground">Instant ticket generation after payment</p>
                     <p className="text-foreground">Tickets are transferable but non-refundable</p>
-                    <p className="text-foreground">Group discounts available for 5+ tickets</p>
-                    <p className="text-foreground">Student discounts available with valid ID</p>
                     <p className="text-foreground">Digital tickets sent via email</p>
                   </div>
                 </div>
@@ -333,6 +408,20 @@ export function Tickets() {
           </Card>
         </motion.div>
       </div>
+
+      {/* Purchase Modal */}
+      {selectedTicket && (
+        <TicketPurchaseModal
+          isOpen={purchaseModalOpen}
+          onClose={() => {
+            setPurchaseModalOpen(false)
+            setSelectedTicket(null)
+          }}
+          ticketType={selectedTicket.id}
+          ticketPrice={selectedTicket.price}
+          ticketName={selectedTicket.name}
+        />
+      )}
     </section>
   )
 }

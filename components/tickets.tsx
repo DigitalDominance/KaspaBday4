@@ -1,20 +1,134 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Check, Star, Crown, Calendar, Users, MapPin, Clock, Ticket } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Check, Star, Crown, Zap, Gift, AlertCircle } from "lucide-react"
+import { ElegantShape } from "@/components/ui/elegant-shape"
+import { TicketPurchaseModal } from "@/components/ticket-purchase-modal"
 import { Space_Grotesk } from "next/font/google"
 import { cn } from "@/lib/utils"
-import { TicketPurchaseModal } from "./ticket-purchase-modal"
 
-const spaceGrotesk = Space_Grotesk({ subsets: ["latin"] })
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+})
 
-interface StockInfo {
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+    },
+  },
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.6,
+      ease: [0.25, 0.4, 0.25, 1],
+    },
+  },
+}
+
+const ticketTypes = [
+  {
+    id: "1-day",
+    name: "1-Day Pass",
+    price: 75,
+    originalPrice: null,
+    description: "Perfect for a single day experience",
+    icon: <Zap className="h-6 w-6" />,
+    color: "from-blue-500/5 to-transparent border-blue-500/20",
+    buttonColor: "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700",
+    popular: false,
+    maxStock: 50,
+    features: [
+      "Access to one full day (Nov 7, 8, or 9)",
+      "All workshops and presentations",
+      "Complimentary meals and beverages",
+      "5 raffle entries for daily prizes",
+      "Access to vendor marketplace",
+      "Networking opportunities",
+      "Event swag bag",
+    ],
+  },
+  {
+    id: "2-day",
+    name: "2-Day Pass",
+    price: 125,
+    originalPrice: 150,
+    description: "Great value for weekend experience",
+    icon: <Star className="h-6 w-6" />,
+    color: "from-purple-500/5 to-transparent border-purple-500/20",
+    buttonColor: "from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700",
+    popular: true,
+    maxStock: 30,
+    features: [
+      "Access to any 2 days (Nov 7-9)",
+      "All workshops and presentations",
+      "Complimentary meals and beverages",
+      "12 raffle entries for daily prizes",
+      "Access to vendor marketplace",
+      "Enhanced networking sessions",
+      "Premium event swag bag",
+    ],
+  },
+  {
+    id: "3-day",
+    name: "3-Day Pass",
+    price: 175,
+    originalPrice: 225,
+    description: "Complete celebration experience",
+    icon: <Crown className="h-6 w-6" />,
+    color: "from-blue-500/5 to-purple-500/5 border-blue-500/20",
+    buttonColor: "from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700",
+    popular: false,
+    maxStock: 20,
+    features: [
+      "Full access to all 3 days (Nov 7-9)",
+      "All workshops and presentations",
+      "Complimentary meals and beverages",
+      "20 raffle entries for daily prizes",
+      "Access to vendor marketplace",
+      "VIP networking sessions",
+      "Exclusive 3-day attendee meetup",
+      "Deluxe event swag bag",
+    ],
+  },
+  {
+    id: "vip",
+    name: "VIP Pass",
+    price: 299,
+    originalPrice: null,
+    description: "Premium experience with exclusive perks",
+    icon: <Gift className="h-6 w-6" />,
+    color: "from-purple-500/5 to-pink-500/5 border-purple-500/20",
+    buttonColor: "from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700",
+    popular: false,
+    maxStock: 10,
+    features: [
+      "Full access to all 3 days (Nov 7-9)",
+      "All workshops and presentations",
+      "Complimentary meals and beverages",
+      "30 raffle entries + guaranteed prize",
+      "Access to vendor marketplace",
+      "Exclusive meet & greet with speakers",
+      "1-on-1 networking opportunities",
+      "Premium VIP swag package",
+      "Exclusive VIP dinner (Nov 8)",
+    ],
+  },
+]
+
+interface TicketStock {
   type: string
   available: number
   reserved: number
@@ -23,326 +137,329 @@ interface StockInfo {
   soldOut: boolean
 }
 
-interface TicketType {
-  id: string
-  name: string
-  price: number
-  originalPrice?: number
-  description: string
-  features: string[]
-  icon: React.ReactNode
-  gradient: string
-  borderColor: string
-  popular?: boolean
-}
-
-const ticketTypes: TicketType[] = [
-  {
-    id: "1-day",
-    name: "1-Day Pass",
-    price: 75,
-    description: "Perfect for a single day experience",
-    features: [
-      "Access to one full day (Nov 7-9)",
-      "All workshops and presentations",
-      "Complimentary meals and beverages",
-      "Networking opportunities",
-      "5 raffle entries for daily prizes",
-      "Access to vendor marketplace",
-    ],
-    icon: <Calendar className="h-6 w-6" />,
-    gradient: "from-blue-500 to-cyan-500",
-    borderColor: "border-blue-500/20",
-  },
-  {
-    id: "2-day",
-    name: "2-Day Pass",
-    price: 125,
-    originalPrice: 150,
-    description: "Great value for two days",
-    features: [
-      "Access to any 2 days (Nov 7-9)",
-      "All workshops and presentations",
-      "Complimentary meals and beverages",
-      "Networking opportunities",
-      "10 raffle entries + guaranteed prize",
-      "Access to vendor marketplace",
-      "Exclusive meet & greet with speakers",
-    ],
-    icon: <Users className="h-6 w-6" />,
-    gradient: "from-green-500 to-emerald-500",
-    borderColor: "border-green-500/20",
-    popular: true,
-  },
-  {
-    id: "3-day",
-    name: "3-Day Pass",
-    price: 175,
-    originalPrice: 225,
-    description: "Full access to all three days",
-    features: [
-      "Full access to all 3 days (Nov 7-9)",
-      "All workshops and presentations",
-      "Complimentary meals and beverages",
-      "Networking opportunities",
-      "15 raffle entries + guaranteed prize",
-      "Access to vendor marketplace",
-      "Exclusive meet & greet with speakers",
-      "Premium networking opportunities",
-      "Exclusive VIP swag package",
-    ],
-    icon: <Star className="h-6 w-6" />,
-    gradient: "from-purple-500 to-pink-500",
-    borderColor: "border-purple-500/20",
-  },
-  {
-    id: "vip",
-    name: "VIP Pass",
-    price: 299,
-    description: "Premium experience with exclusive perks",
-    features: [
-      "Full access to all 3 days (Nov 7-9)",
-      "All workshops and presentations",
-      "Complimentary meals and beverages",
-      "30 raffle entries + guaranteed prize",
-      "Access to vendor marketplace",
-      "Exclusive meet & greet with speakers",
-      "Premium networking opportunities",
-      "Premium VIP swag package",
-      "Exclusive VIP dinner (Nov 8)",
-      "Priority seating",
-    ],
-    icon: <Crown className="h-6 w-6" />,
-    gradient: "from-amber-500 to-orange-500",
-    borderColor: "border-amber-500/20",
-  },
-]
-
 export function Tickets() {
-  const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [stockInfo, setStockInfo] = useState<StockInfo[]>([])
+  const [ticketStock, setTicketStock] = useState<Record<string, TicketStock>>({})
+  const [selectedTicket, setSelectedTicket] = useState<(typeof ticketTypes)[0] | null>(null)
+  const [purchaseModalOpen, setPurchaseModalOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  // Fetch stock information
-  const fetchStock = async () => {
+  useEffect(() => {
+    fetchTicketStock()
+
+    // Update stock every 30 seconds
+    const interval = setInterval(fetchTicketStock, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const fetchTicketStock = async () => {
     try {
       const response = await fetch("/api/tickets/stock")
       const data = await response.json()
-      if (data.success) {
-        setStockInfo(data.stock)
+
+      if (data.success && data.stock) {
+        const stockMap = data.stock.reduce((acc: Record<string, TicketStock>, item: TicketStock) => {
+          acc[item.type] = item
+          return acc
+        }, {})
+        setTicketStock(stockMap)
       }
     } catch (error) {
-      console.error("Failed to fetch stock:", error)
+      console.error("Failed to fetch ticket stock:", error)
     } finally {
       setLoading(false)
     }
   }
 
-  // Initial fetch and periodic updates
-  useEffect(() => {
-    fetchStock()
-
-    // Update stock every 30 seconds
-    const interval = setInterval(fetchStock, 30000)
-    return () => clearInterval(interval)
-  }, [])
-
-  const getStockForTicket = (ticketId: string) => {
-    return stockInfo.find((stock) => stock.type === ticketId)
-  }
-
-  const handlePurchaseClick = (ticket: TicketType) => {
-    const stock = getStockForTicket(ticket.id)
-    if (stock?.soldOut) return
-
+  const handleTicketPurchase = (ticket: (typeof ticketTypes)[0]) => {
     setSelectedTicket(ticket)
-    setIsModalOpen(true)
+    setPurchaseModalOpen(true)
   }
 
-  const getStockBadge = (ticket: TicketType) => {
-    const stock = getStockForTicket(ticket.id)
-    if (!stock) return null
-
-    if (stock.soldOut) {
-      return <Badge variant="destructive">Sold Out</Badge>
-    }
-
-    if (stock.available <= 5) {
-      return (
-        <Badge variant="secondary" className="bg-orange-100 text-orange-800">
-          Only {stock.available} Left!
-        </Badge>
-      )
-    }
-
-    return <Badge variant="secondary">{stock.available} Available</Badge>
+  const handlePurchaseComplete = () => {
+    // Refresh stock after purchase
+    fetchTicketStock()
   }
 
-  const getStockText = (ticket: TicketType) => {
-    const stock = getStockForTicket(ticket.id)
-    if (!stock) return ""
-
-    if (stock.reserved > 0) {
-      return `${stock.available} available • ${stock.reserved} reserved • ${stock.sold} sold`
-    }
-
-    return `${stock.available} of ${stock.total} available • ${stock.sold} sold`
+  const getTicketAvailability = (ticketId: string) => {
+    const stock = ticketStock[ticketId]
+    if (!stock) return { available: 0, reserved: 0, total: 0, soldOut: false }
+    return stock
   }
 
   return (
     <section
       id="tickets"
-      className="py-20 bg-gradient-to-br from-background via-blue-50/30 to-purple-50/30 dark:from-background dark:via-blue-950/10 dark:to-purple-950/10"
+      className="py-20 px-4 md:px-6 bg-gradient-to-b from-muted/20 to-background relative overflow-hidden"
     >
-      <div className="container mx-auto px-4">
+      {/* Add geometric shapes */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-slate-900/10 md:bg-transparent" />
+        <ElegantShape
+          width={500}
+          height={120}
+          rotate={45}
+          gradient="from-blue-500/[0.12]"
+          className="left-[-5%] top-[20%]"
+          mobileWidth={150}
+          mobileHeight={36}
+        />
+        <ElegantShape
+          width={400}
+          height={100}
+          rotate={-30}
+          gradient="from-purple-500/[0.12]"
+          className="right-[0%] top-[70%]"
+          mobileWidth={120}
+          mobileHeight={30}
+        />
+        <ElegantShape
+          width={300}
+          height={80}
+          rotate={15}
+          gradient="from-blue-400/[0.10]"
+          className="left-[10%] bottom-[10%]"
+          mobileWidth={90}
+          mobileHeight={24}
+        />
+        <ElegantShape
+          width={250}
+          height={70}
+          rotate={-45}
+          gradient="from-purple-400/[0.10]"
+          className="right-[20%] top-[15%]"
+          mobileWidth={75}
+          mobileHeight={21}
+        />
+      </div>
+
+      <div className="container mx-auto max-w-7xl relative z-10">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          viewport={{ once: true }}
+          variants={containerVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
           className="text-center mb-16"
         >
-          <h2 className={cn("text-4xl md:text-5xl font-bold mb-6", spaceGrotesk.className)}>
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600">
-              Get Your Tickets
-            </span>
-          </h2>
-          <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Join us for three days of innovation, networking, and celebration in the heart of Kaspa's community
-          </p>
-          <div className="flex items-center justify-center gap-6 mt-8 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <MapPin className="h-4 w-4" />
-              <span>Austin, Texas</span>
+          <motion.h2
+            variants={itemVariants}
+            className="text-3xl md:text-5xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400 font-space-grotesk"
+          >
+            Get Your Tickets
+          </motion.h2>
+          <motion.p variants={itemVariants} className="text-lg text-muted-foreground max-w-2xl mx-auto mb-4">
+            Choose the perfect pass for your Kaspa celebration experience • November 7-9, 2025
+          </motion.p>
+          <motion.div
+            variants={itemVariants}
+            className="flex items-center justify-center gap-2 text-sm text-muted-foreground"
+          >
+            <AlertCircle className="h-4 w-4" />
+            <span>Pay with any cryptocurrency • Secure NOWPayments processing</span>
+          </motion.div>
+        </motion.div>
+
+        {/* Ticket Cards Container with Animated Outline */}
+        <motion.div variants={itemVariants} className="relative mb-16">
+          {/* Early Bird Special Tag */}
+          <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 z-20">
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.3, duration: 0.5 }}
+              className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-2 rounded-full font-semibold text-sm shadow-lg"
+            >
+              Early Bird Special
+            </motion.div>
+          </div>
+
+          {/* Animated Container Background */}
+          <div className="relative p-8 rounded-3xl bg-gradient-to-br from-blue-500/5 via-purple-500/5 to-pink-500/5 border-2 border-transparent overflow-hidden">
+            {/* Animated Border */}
+            <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-blue-500/30 via-purple-500/30 to-pink-500/30 p-[2px]">
+              <div className="h-full w-full rounded-3xl bg-background" />
             </div>
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              <span>November 7-9, 2025</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              <span>3 Days of Events</span>
+
+            {/* Animated Glow Effect */}
+            <motion.div
+              className="absolute inset-0 rounded-3xl bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 blur-xl"
+              animate={{
+                opacity: [0.3, 0.6, 0.3],
+                scale: [1, 1.02, 1],
+              }}
+              transition={{
+                duration: 3,
+                repeat: Number.POSITIVE_INFINITY,
+                ease: "easeInOut",
+              }}
+            />
+
+            {/* Content */}
+            <div className="relative z-10">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {ticketTypes.map((ticket, index) => {
+                  const availability = getTicketAvailability(ticket.id)
+                  const isSoldOut = availability.soldOut
+                  const isLowStock = availability.available <= 5 && availability.available > 0
+                  const showReserved = availability.reserved > 0
+
+                  return (
+                    <motion.div key={ticket.name} variants={itemVariants} className="relative">
+                      {ticket.popular && !isSoldOut && (
+                        <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-10">
+                          <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 px-4 py-1">
+                            Most Popular
+                          </Badge>
+                        </div>
+                      )}
+                      {isSoldOut && (
+                        <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-10">
+                          <Badge className="bg-red-500 text-white border-0 px-4 py-1">Sold Out</Badge>
+                        </div>
+                      )}
+                      {isLowStock && !isSoldOut && (
+                        <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-10">
+                          <Badge className="bg-orange-500 text-white border-0 px-4 py-1 animate-pulse">
+                            Only {availability.available} Left!
+                          </Badge>
+                        </div>
+                      )}
+                      <Card
+                        className={`h-full bg-gradient-to-br ${ticket.color} relative overflow-hidden ${isSoldOut ? "opacity-60" : ""}`}
+                      >
+                        {isSoldOut && <div className="absolute inset-0 bg-black/20 z-5" />}
+                        <CardHeader className="text-center pb-4">
+                          <div
+                            className={cn(
+                              "p-4 rounded-lg bg-gradient-to-r text-white mb-4 flex flex-col items-center gap-2",
+                              ticket.buttonColor,
+                            )}
+                          >
+                            {ticket.icon}
+                            <CardTitle className="text-xl font-space-grotesk text-white">{ticket.name}</CardTitle>
+                          </div>
+                          <p className="text-sm text-muted-foreground">{ticket.description}</p>
+                          <div className="flex items-center justify-center gap-2 mt-4">
+                            <span className="text-3xl font-bold">${ticket.price}</span>
+                            {ticket.originalPrice && (
+                              <span className="text-lg text-muted-foreground line-through">
+                                ${ticket.originalPrice}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                            {loading ? (
+                              <div>Loading availability...</div>
+                            ) : (
+                              <>
+                                <div>
+                                  {availability.available} of {availability.total} available
+                                </div>
+                                {showReserved && <div className="text-blue-400">{availability.reserved} reserved</div>}
+                              </>
+                            )}
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <ul className="space-y-2">
+                            {ticket.features.map((feature, featureIndex) => (
+                              <li key={featureIndex} className="flex items-start gap-2 text-sm">
+                                <Check className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                                <span>{feature}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          <Button
+                            className={cn(
+                              `w-full bg-gradient-to-r ${ticket.buttonColor} text-white border-0`,
+                              spaceGrotesk.className,
+                            )}
+                            size="lg"
+                            disabled={isSoldOut || loading}
+                            onClick={() => handleTicketPurchase(ticket)}
+                          >
+                            {isSoldOut ? "Sold Out" : `Buy ${ticket.name}`}
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  )
+                })}
+              </div>
             </div>
           </div>
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-          {ticketTypes.map((ticket, index) => {
-            const stock = getStockForTicket(ticket.id)
-            const isSoldOut = stock?.soldOut || false
+        {/* Additional Info */}
+        <motion.div
+          variants={itemVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
+          className="text-center"
+        >
+          <Card className="border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-purple-500/5 max-w-4xl mx-auto relative overflow-hidden">
+            <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 p-[1px]">
+              <div className="h-full w-full rounded-xl bg-background" />
+            </div>
 
-            return (
-              <motion.div
-                key={ticket.id}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: index * 0.1 }}
-                viewport={{ once: true }}
-                className="relative"
+            <CardContent className="pt-8 relative z-10">
+              <h3
+                className={cn(
+                  "text-2xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400",
+                  spaceGrotesk.className,
+                )}
               >
-                <Card
-                  className={cn(
-                    "relative overflow-hidden transition-all duration-300 hover:shadow-2xl hover:scale-105",
-                    ticket.borderColor,
-                    isSoldOut ? "opacity-75" : "",
-                    ticket.popular ? "ring-2 ring-green-500/50" : "",
-                  )}
-                >
-                  {ticket.popular && (
-                    <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 z-10">
-                      <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white px-4 py-1">
-                        Most Popular
-                      </Badge>
-                    </div>
-                  )}
-
-                  <div className={cn("absolute inset-0 bg-gradient-to-br opacity-5", ticket.gradient)} />
-
-                  <CardHeader className="relative">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className={cn("p-2 rounded-lg bg-gradient-to-br", ticket.gradient)}>
-                        <div className="text-white">{ticket.icon}</div>
-                      </div>
-                      {getStockBadge(ticket)}
-                    </div>
-                    <CardTitle className="text-xl font-bold">{ticket.name}</CardTitle>
-                    <CardDescription className="text-sm">{ticket.description}</CardDescription>
-
-                    {/* Stock Information */}
-                    {!loading && stock && (
-                      <div className="text-xs text-muted-foreground mt-2">{getStockText(ticket)}</div>
-                    )}
-                  </CardHeader>
-
-                  <CardContent className="relative">
-                    <div className="mb-6">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-3xl font-bold">${ticket.price}</span>
-                        {ticket.originalPrice && (
-                          <span className="text-lg text-muted-foreground line-through">${ticket.originalPrice}</span>
-                        )}
-                      </div>
-                      {ticket.originalPrice && (
-                        <span className="text-sm text-green-600 font-medium">
-                          Save ${ticket.originalPrice - ticket.price}
-                        </span>
-                      )}
-                    </div>
-
-                    <ul className="space-y-2">
-                      {ticket.features.map((feature, featureIndex) => (
-                        <li key={featureIndex} className="flex items-start gap-2 text-sm">
-                          <Check className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                          <span>{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-
-                  <CardFooter className="relative">
-                    <Button
-                      onClick={() => handlePurchaseClick(ticket)}
-                      disabled={isSoldOut || loading}
-                      className={cn(
-                        "w-full font-semibold transition-all duration-300",
-                        isSoldOut
-                          ? "bg-gray-400 cursor-not-allowed"
-                          : `bg-gradient-to-r ${ticket.gradient} hover:shadow-lg hover:scale-105`,
-                      )}
-                    >
-                      {isSoldOut ? (
-                        "Sold Out"
-                      ) : (
-                        <>
-                          <Ticket className="h-4 w-4 mr-2" />
-                          Buy {ticket.name}
-                        </>
-                      )}
-                    </Button>
-                  </CardFooter>
-                </Card>
-              </motion.div>
-            )
-          })}
-        </div>
-
-        {/* Purchase Modal */}
-        {selectedTicket && (
-          <TicketPurchaseModal
-            isOpen={isModalOpen}
-            onClose={() => {
-              setIsModalOpen(false)
-              setSelectedTicket(null)
-              // Refresh stock after modal closes
-              fetchStock()
-            }}
-            ticketType={selectedTicket.id}
-            ticketPrice={selectedTicket.price}
-            ticketName={selectedTicket.name}
-          />
-        )}
+                Important Information
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-3">
+                  <h4 className={cn("font-semibold text-blue-400 mb-4 text-lg", spaceGrotesk.className)}>
+                    Event Details
+                  </h4>
+                  <div className="space-y-2">
+                    <p className="text-foreground">November 7-9, 2025</p>
+                    <p className="text-foreground">Kaspa Community Center, Liverpool, NY</p>
+                    <p className="text-foreground">All tickets include meals and beverages</p>
+                    <p className="text-foreground">Daily raffle prizes for all attendees</p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <h4 className={cn("font-semibold text-purple-400 mb-4 text-lg", spaceGrotesk.className)}>
+                    Payment & Policies
+                  </h4>
+                  <div className="space-y-2">
+                    <p className="text-foreground">Pay with 100+ cryptocurrencies</p>
+                    <p className="text-foreground">Instant ticket generation after payment</p>
+                    <p className="text-foreground">Tickets are transferable but non-refundable</p>
+                    <p className="text-foreground">Digital tickets sent via email</p>
+                    <p className="text-foreground">30-minute reservation window</p>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-8 pt-4 border-t border-border/50">
+                <p className="text-sm text-muted-foreground">
+                  Questions? Contact us at events@kaspafunding.com • Early bird pricing ends October 15th, 2025
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
+
+      {/* Purchase Modal */}
+      {selectedTicket && (
+        <TicketPurchaseModal
+          isOpen={purchaseModalOpen}
+          onClose={() => {
+            setPurchaseModalOpen(false)
+            setSelectedTicket(null)
+            handlePurchaseComplete()
+          }}
+          ticketType={selectedTicket.id}
+          ticketPrice={selectedTicket.price}
+          ticketName={selectedTicket.name}
+        />
+      )}
     </section>
   )
 }

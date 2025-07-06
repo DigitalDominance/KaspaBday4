@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { NOWPaymentsAPI } from "@/lib/nowpayments"
 import { KaspaBirthdayTicketsModel } from "@/lib/models/KaspaBirthdayTickets"
 import { TicketStockModel } from "@/lib/models/TicketStock"
+import { EmailService } from "@/lib/email"
+import { generateTicketQR, generateQRCodeDataURL } from "@/lib/qr-generator"
 
 export async function GET(request: Request, { params }: { params: { paymentId: string } }) {
   try {
@@ -11,70 +13,139 @@ export async function GET(request: Request, { params }: { params: { paymentId: s
       return NextResponse.json({ error: "Payment ID is required" }, { status: 400 })
     }
 
-    console.log(`🔍 Checking payment status for: ${paymentId}`)
+    console.log(`🔍 Checking status for payment: ${paymentId}`)
 
-    // Get payment status from NOWPayments
     const nowPayments = new NOWPaymentsAPI()
-    const paymentStatus = await nowPayments.getPaymentStatus(paymentId)
 
-    // Get order from database
-    const order = await KaspaBirthdayTicketsModel.findByPaymentId(paymentId)
-    if (!order) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 })
+    // Method 1: Try to get payment from list (more reliable)
+    let paymentData = null
+    try {
+      console.log("📋 Fetching from payments list...")
+      paymentData = await nowPayments.getPaymentStatusFromList(paymentId)
+      if (paymentData) {
+        console.log(`✅ Found payment in list: ${paymentData.payment_status}`)
+      }
+    } catch (listError) {
+      console.log("⚠️ List method failed, trying individual endpoint...")
     }
 
-    // Check if payment is finished and we need to confirm the sale
-    if (paymentStatus.payment_status === "finished" && order.paymentStatus !== "finished") {
-      console.log(`✅ Payment ${paymentId} is finished, confirming sale...`)
+    // Method 2: Fallback to individual payment endpoint
+    if (!paymentData) {
+      try {
+        console.log("🔍 Fetching individual payment...")
+        paymentData = await nowPayments.getPaymentStatus(paymentId)
+        if (paymentData && !paymentData.error) {
+          console.log(`✅ Found individual payment: ${paymentData.payment_status}`)
+        }
+      } catch (individualError) {
+        console.error("❌ Individual payment fetch failed:", individualError)
+      }
+    }
 
-      // Confirm the sale in stock system
-      await TicketStockModel.confirmSale(order.ticketType, order.quantity, order.orderId)
+    // Get current ticket from database
+    const currentTicket = await KaspaBirthdayTicketsModel.findByPaymentId(paymentId)
+    if (!currentTicket) {
+      console.log("❌ Ticket not found in database")
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 })
+    }
 
-      // Update order status
-      await KaspaBirthdayTicketsModel.updateByPaymentId(paymentId, {
-        paymentStatus: "finished",
-        paidAt: new Date(),
-        updatedAt: new Date(),
+    // If we can't get payment data from NOWPayments, return current database status
+    if (!paymentData || paymentData.error) {
+      console.log("⚠️ Using database status as fallback")
+      return NextResponse.json({
+        paymentId,
+        paymentStatus: currentTicket.paymentStatus || "waiting",
+        payAddress: currentTicket.payAddress,
+        payAmount: currentTicket.payAmount,
+        payCurrency: currentTicket.payCurrency,
+        actuallyPaid: currentTicket.actuallyPaid || 0,
+        expiresAt: currentTicket.reservationExpiresAt?.toISOString(),
+        updatedAt: new Date().toISOString(),
       })
     }
 
-    // Check if reservation has expired
-    const now = new Date()
-    const expiresAt = new Date(order.reservationExpiresAt)
-    const timeRemaining = expiresAt.getTime() - now.getTime()
+    const newStatus = paymentData.payment_status
+    const currentStatus = currentTicket.paymentStatus
 
+    console.log(`📊 Status comparison: ${currentStatus} → ${newStatus}`)
+
+    // Update database if status changed
+    if (newStatus !== currentStatus) {
+      console.log(`🔄 Updating payment status: ${currentStatus} → ${newStatus}`)
+
+      const updateData: any = {
+        paymentStatus: newStatus,
+        actuallyPaid: paymentData.actually_paid,
+      }
+
+      await KaspaBirthdayTicketsModel.updatePaymentStatus(paymentId, updateData)
+
+      // If payment is now finished, confirm the sale and generate ticket
+      if (newStatus === "finished" && currentStatus !== "finished") {
+        console.log("🎫 Payment completed! Confirming sale and generating ticket...")
+
+        try {
+          // Confirm the sale in stock system
+          await TicketStockModel.confirmSale(currentTicket.ticketType, currentTicket.quantity)
+
+          // Generate QR code
+          const qrResult = generateTicketQR({
+            orderId: currentTicket.orderId,
+            customerName: currentTicket.customerName,
+            customerEmail: currentTicket.customerEmail,
+            ticketType: currentTicket.ticketType,
+            quantity: currentTicket.quantity,
+            eventDate: "November 7-9, 2025",
+          })
+
+          const qrCodeDataUrl = await generateQRCodeDataURL(qrResult.qrString)
+
+          // Update ticket with QR code
+          await KaspaBirthdayTicketsModel.updatePaymentStatus(paymentId, {
+            qrCode: qrCodeDataUrl,
+            ticketData: qrResult.ticketInfo,
+          })
+
+          // Send ticket email
+          const emailSent = await EmailService.sendTicketEmail({
+            ticket: { ...currentTicket, paymentStatus: newStatus },
+            qrCodeDataUrl,
+          })
+
+          if (emailSent) {
+            await KaspaBirthdayTicketsModel.updatePaymentStatus(paymentId, {
+              emailSent: true,
+            })
+            console.log("✅ Ticket email sent successfully")
+          } else {
+            console.log("⚠️ Failed to send ticket email")
+          }
+        } catch (ticketError) {
+          console.error("❌ Error generating/sending ticket:", ticketError)
+        }
+      }
+
+      // If payment failed/expired, release the reservation
+      if ((newStatus === "failed" || newStatus === "expired") && currentStatus !== newStatus) {
+        console.log("🔄 Payment failed/expired, releasing reservation...")
+        await TicketStockModel.releaseReservation(currentTicket.ticketType, currentTicket.quantity)
+      }
+    }
+
+    // Return updated status with payment details
     return NextResponse.json({
-      success: true,
-      payment: {
-        paymentId: paymentStatus.payment_id,
-        paymentStatus: paymentStatus.payment_status,
-        payAddress: paymentStatus.pay_address,
-        payAmount: paymentStatus.pay_amount,
-        payCurrency: paymentStatus.pay_currency,
-        actuallyPaid: paymentStatus.actually_paid,
-        createdAt: paymentStatus.created_at,
-        updatedAt: paymentStatus.updated_at,
-      },
-      order: {
-        orderId: order.orderId,
-        customerName: order.customerName,
-        customerEmail: order.customerEmail,
-        ticketType: order.ticketType,
-        quantity: order.quantity,
-        totalAmount: order.totalAmount,
-        expiresAt: order.reservationExpiresAt,
-        timeRemaining: Math.max(0, timeRemaining),
-        expired: timeRemaining <= 0,
-      },
+      paymentId: currentTicket.paymentId,
+      orderId: currentTicket.orderId,
+      paymentStatus: newStatus,
+      payAddress: currentTicket.payAddress || paymentData.pay_address,
+      payAmount: currentTicket.payAmount || paymentData.pay_amount,
+      payCurrency: currentTicket.payCurrency || paymentData.pay_currency,
+      actuallyPaid: paymentData.actually_paid || 0,
+      expiresAt: currentTicket.reservationExpiresAt?.toISOString(),
+      updatedAt: new Date().toISOString(),
     })
   } catch (error) {
-    console.error("Payment status error:", error)
-    return NextResponse.json(
-      {
-        error: "Failed to get payment status",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
-    )
+    console.error("❌ Payment status check error:", error)
+    return NextResponse.json({ error: "Failed to check payment status" }, { status: 500 })
   }
 }

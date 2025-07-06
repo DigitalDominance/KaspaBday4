@@ -4,7 +4,7 @@ import type { KaspaBirthdayTicket } from "@/lib/models/KaspaBirthdayTickets"
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 // Using Resend's default onboarding domain - no custom domain needed!
 const FROM_EMAIL = "onboarding@resend.dev"
-const REPLY_TO_EMAIL = "noreply@gmail.com" // Can be any email for replies
+const REPLY_TO_EMAIL = "zalesskiandrew@gmail.com" // Your email for replies
 
 interface EmailTicketData {
   ticket: KaspaBirthdayTicket
@@ -22,6 +22,8 @@ export class EmailService {
       const emailHtml = this.generateTicketEmailHTML(ticket, qrCodeDataUrl)
       const emailText = this.generateTicketEmailText(ticket)
 
+      console.log(`Sending ticket email to: ${ticket.customerEmail}`)
+
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -35,17 +37,17 @@ export class EmailService {
           subject: `🎉 Your Kaspa 4th Birthday Ticket is Ready! - Order ${ticket.orderId}`,
           html: emailHtml,
           text: emailText,
-          // Embed QR code directly in email instead of attachment
-          // This avoids attachment issues and makes it easier
         }),
       })
 
+      const responseData = await response.json()
+
       if (response.ok) {
-        console.log(`Ticket email sent successfully to ${ticket.customerEmail}`)
+        console.log(`✅ Ticket email sent successfully to ${ticket.customerEmail}`)
+        console.log(`Email ID: ${responseData.id}`)
         return true
       } else {
-        const error = await response.text()
-        console.error("Failed to send email:", error)
+        console.error("❌ Failed to send email:", responseData)
         return false
       }
     } catch (error) {
@@ -552,6 +554,8 @@ BlockDAG • Parallel Blocks • Instant Finality
     }
 
     try {
+      console.log(`Sending payment confirmation to: ${ticket.customerEmail}`)
+
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -568,7 +572,16 @@ BlockDAG • Parallel Blocks • Instant Finality
         }),
       })
 
-      return response.ok
+      const responseData = await response.json()
+
+      if (response.ok) {
+        console.log(`✅ Payment confirmation sent to ${ticket.customerEmail}`)
+        console.log(`Email ID: ${responseData.id}`)
+        return true
+      } else {
+        console.error("❌ Failed to send payment confirmation:", responseData)
+        return false
+      }
     } catch (error) {
       console.error("Payment confirmation email error:", error)
       return false

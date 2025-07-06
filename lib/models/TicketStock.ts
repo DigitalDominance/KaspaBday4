@@ -1,11 +1,13 @@
 import clientPromise from "@/lib/mongodb"
 import type { ObjectId } from "mongodb"
+import { TicketReservationModel } from "./TicketReservation"
 
 export interface TicketStockRecord {
   _id?: ObjectId
   ticketType: string
   maxQuantity: number
   soldQuantity: number
+  reservedQuantity: number
   availableQuantity: number
   lastUpdated: Date
   createdAt: Date
@@ -39,6 +41,7 @@ export class TicketStockModel {
           ticketType: ticket.ticketType,
           maxQuantity: ticket.maxQuantity,
           soldQuantity: 0,
+          reservedQuantity: 0,
           availableQuantity: ticket.maxQuantity,
           lastUpdated: new Date(),
           createdAt: new Date(),
@@ -60,24 +63,33 @@ export class TicketStockModel {
     return await collection.find({}).toArray()
   }
 
-  // Reserve tickets (when payment is created)
+  // Reserve tickets (when payment is created) - now with expiration
   static async reserveTickets(ticketType: string, quantity: number): Promise<boolean> {
     const collection = await this.getCollection()
+
+    // First clean up any expired reservations
+    await this.releaseExpiredReservations()
 
     const result = await collection.updateOne(
       {
         ticketType,
-        availableQuantity: { $gte: quantity },
+        $expr: {
+          $gte: [{ $subtract: ["$maxQuantity", { $add: ["$soldQuantity", "$reservedQuantity"] }] }, quantity],
+        },
       },
       {
         $inc: {
-          availableQuantity: -quantity,
+          reservedQuantity: quantity,
         },
         $set: {
           lastUpdated: new Date(),
         },
       },
     )
+
+    if (result.modifiedCount > 0) {
+      console.log(`🔒 Reserved ${quantity}x ${ticketType} tickets for 15 minutes`)
+    }
 
     return result.modifiedCount > 0
   }
@@ -91,6 +103,7 @@ export class TicketStockModel {
       {
         $inc: {
           soldQuantity: quantity,
+          reservedQuantity: -quantity, // Remove from reserved
         },
         $set: {
           lastUpdated: new Date(),
@@ -102,7 +115,7 @@ export class TicketStockModel {
     return result.modifiedCount > 0
   }
 
-  // Release reserved tickets (when payment fails/expires)
+  // Release reserved tickets (when payment fails/expires/cancelled)
   static async releaseReservation(ticketType: string, quantity: number): Promise<boolean> {
     const collection = await this.getCollection()
 
@@ -110,7 +123,7 @@ export class TicketStockModel {
       { ticketType },
       {
         $inc: {
-          availableQuantity: quantity,
+          reservedQuantity: -quantity,
         },
         $set: {
           lastUpdated: new Date(),
@@ -122,22 +135,58 @@ export class TicketStockModel {
     return result.modifiedCount > 0
   }
 
-  // Check if tickets are available
+  // Release expired reservations
+  static async releaseExpiredReservations(): Promise<void> {
+    // Clean up expired reservations first
+    await TicketReservationModel.cleanupExpiredReservations()
+
+    // Get all expired reservations that need stock released
+    const expiredReservations = await TicketReservationModel.getExpiredReservations()
+
+    for (const reservation of expiredReservations) {
+      await this.releaseReservation(reservation.ticketType, reservation.quantity)
+    }
+
+    // Remove the expired reservations from the reservation collection
+    if (expiredReservations.length > 0) {
+      const collection = await TicketReservationModel.getCollection()
+      await collection.deleteMany({
+        status: "expired",
+        expiredAt: { $exists: true },
+      })
+    }
+  }
+
+  // Check if tickets are available (considering reservations)
   static async isAvailable(ticketType: string, quantity: number): Promise<boolean> {
+    // Clean up expired reservations first
+    await this.releaseExpiredReservations()
+
     const stock = await this.getStock(ticketType)
-    return stock ? stock.availableQuantity >= quantity : false
+    if (!stock) return false
+
+    const actuallyAvailable = stock.maxQuantity - stock.soldQuantity - stock.reservedQuantity
+    return actuallyAvailable >= quantity
   }
 
   // Get formatted stock info for frontend
   static async getStockInfo() {
+    // Clean up expired reservations first
+    await this.releaseExpiredReservations()
+
     const allStock = await this.getAllStock()
 
-    return allStock.map((stock) => ({
-      type: stock.ticketType,
-      available: stock.availableQuantity,
-      total: stock.maxQuantity,
-      sold: stock.soldQuantity,
-      soldOut: stock.availableQuantity === 0,
-    }))
+    return allStock.map((stock) => {
+      const actuallyAvailable = stock.maxQuantity - stock.soldQuantity - stock.reservedQuantity
+
+      return {
+        type: stock.ticketType,
+        available: actuallyAvailable,
+        reserved: stock.reservedQuantity,
+        total: stock.maxQuantity,
+        sold: stock.soldQuantity,
+        soldOut: actuallyAvailable === 0,
+      }
+    })
   }
 }

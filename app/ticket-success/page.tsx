@@ -1,56 +1,80 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { CheckCircle, Download, Mail, Calendar, Loader2, Clock, AlertCircle } from "lucide-react"
-import { Space_Grotesk } from "next/font/google"
-import { cn } from "@/lib/utils"
+import { CheckCircle, Download, Mail, Calendar, Clock } from "lucide-react"
 import { motion } from "framer-motion"
+import { generateTicketText } from "@/lib/qr-generator"
 
-const spaceGrotesk = Space_Grotesk({ subsets: ["latin"] })
+interface TicketData {
+  orderId: string
+  customerName: string
+  customerEmail: string
+  ticketType: string
+  quantity: number
+  totalAmount: number
+  paymentStatus: string
+  createdAt: string
+}
 
 export default function TicketSuccessPage() {
   const searchParams = useSearchParams()
-  const orderId = searchParams.get("order")
-  const [ticketData, setTicketData] = useState<any>(null)
+  const orderId = searchParams.get("orderId")
+
+  const [ticketData, setTicketData] = useState<TicketData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [emailCooldown, setEmailCooldown] = useState(0)
   const [emailSending, setEmailSending] = useState(false)
 
   useEffect(() => {
     if (orderId) {
-      fetchTicketData()
-      // Poll for payment status updates
-      const interval = setInterval(fetchTicketData, 10000) // Check every 10 seconds
-      return () => clearInterval(interval)
+      fetchTicketData(orderId)
     }
   }, [orderId])
 
-  // Email cooldown timer
   useEffect(() => {
+    // Check for email cooldown in localStorage
+    const cooldownKey = `email_cooldown_${orderId}`
+    const lastEmailTime = localStorage.getItem(cooldownKey)
+
+    if (lastEmailTime) {
+      const timeDiff = Date.now() - Number.parseInt(lastEmailTime)
+      const remainingCooldown = Math.max(0, 3600000 - timeDiff) // 1 hour in ms
+
+      if (remainingCooldown > 0) {
+        setEmailCooldown(Math.ceil(remainingCooldown / 1000))
+      }
+    }
+  }, [orderId])
+
+  useEffect(() => {
+    // Countdown timer for email cooldown
     if (emailCooldown > 0) {
-      const timer = setTimeout(() => setEmailCooldown(emailCooldown - 1), 1000)
-      return () => clearTimeout(timer)
+      const timer = setInterval(() => {
+        setEmailCooldown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+
+      return () => clearInterval(timer)
     }
   }, [emailCooldown])
 
-  const fetchTicketData = async () => {
+  const fetchTicketData = async (orderId: string) => {
     try {
       const response = await fetch(`/api/tickets/${orderId}`)
       if (response.ok) {
         const data = await response.json()
         setTicketData(data)
-        setError(null)
-      } else {
-        setError("Ticket not found")
       }
     } catch (error) {
-      console.error("Failed to fetch ticket:", error)
-      setError("Failed to load ticket data")
+      console.error("Failed to fetch ticket data:", error)
     } finally {
       setLoading(false)
     }
@@ -59,49 +83,21 @@ export default function TicketSuccessPage() {
   const handleDownloadTicket = () => {
     if (!ticketData) return
 
-    // Create ticket data for download
-    const ticketInfo = {
-      event: "Kaspa's 4th Birthday Celebration",
+    const ticketText = generateTicketText({
+      orderId: ticketData.orderId,
+      customerName: ticketData.customerName,
+      ticketType: ticketData.ticketType,
+      quantity: ticketData.quantity,
+      event: "Kaspa 4th Birthday Celebration",
       date: "November 7-9, 2025",
       venue: "Kaspa Community Center, Liverpool, NY",
-      customerName: ticketData.customerName,
-      ticketType: ticketData.ticketName,
-      quantity: ticketData.quantity,
-      orderId: ticketData.orderId,
-      qrCode: ticketData.qrCode,
-    }
+    })
 
-    // Create downloadable content
-    const content = `
-KASPA'S 4TH BIRTHDAY CELEBRATION
-================================
-
-Event: ${ticketInfo.event}
-Date: ${ticketInfo.date}
-Venue: ${ticketInfo.venue}
-
-TICKET HOLDER: ${ticketInfo.customerName}
-TICKET TYPE: ${ticketInfo.ticketType}
-QUANTITY: ${ticketInfo.quantity}
-ORDER ID: ${ticketInfo.orderId}
-
-INSTRUCTIONS:
-- Present this ticket and QR code at event entrance
-- Arrive 15 minutes early for check-in
-- Bring valid photo ID for verification
-- Keep this ticket safe - cannot be replaced if lost
-
-QR Code Data: ${ticketInfo.qrCode}
-
-Questions? Contact: tickets@kaspaevents.xyz
-    `
-
-    // Create and download file
-    const blob = new Blob([content], { type: "text/plain" })
+    const blob = new Blob([ticketText], { type: "text/plain" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `kaspa-birthday-ticket-${ticketData.orderId}.txt`
+    a.download = `kaspa-ticket-${ticketData.orderId}.txt`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -124,260 +120,218 @@ Questions? Contact: tickets@kaspaevents.xyz
       })
 
       if (response.ok) {
-        setEmailCooldown(3600) // 1 hour cooldown
+        // Set cooldown
+        const cooldownKey = `email_cooldown_${orderId}`
+        localStorage.setItem(cooldownKey, Date.now().toString())
+        setEmailCooldown(3600) // 1 hour in seconds
+
         alert("Ticket email sent successfully!")
       } else {
-        alert("Failed to send email. Please try again later.")
+        alert("Failed to send email. Please try again.")
       }
     } catch (error) {
       console.error("Failed to send email:", error)
-      alert("Failed to send email. Please try again later.")
+      alert("Failed to send email. Please try again.")
     } finally {
       setEmailSending(false)
     }
   }
 
   const handleAddToCalendar = () => {
-    const startDate = "20251107T090000Z" // November 7, 2025, 9:00 AM UTC
-    const endDate = "20251109T180000Z" // November 9, 2025, 6:00 PM UTC
-    const title = "Kaspa's 4th Birthday Celebration"
-    const description = `${ticketData.ticketName} - ${ticketData.quantity} ticket(s)\nOrder: ${ticketData.orderId}\n\nKaspa Community Center\n4225 Long Branch Rd, Liverpool, NY 13088`
-    const location = "Kaspa Community Center, 4225 Long Branch Rd, Liverpool, NY 13088"
+    const startDate = "20251107T090000Z"
+    const endDate = "20251109T180000Z"
+    const title = encodeURIComponent("Kaspa 4th Birthday Celebration")
+    const details = encodeURIComponent(
+      "Kaspa 4th Birthday Celebration - 3 days of workshops, presentations, and networking",
+    )
+    const location = encodeURIComponent("Kaspa Community Center, Liverpool, NY")
 
-    // Create Google Calendar URL
-    const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
-      title,
-    )}&dates=${startDate}/${endDate}&details=${encodeURIComponent(description)}&location=${encodeURIComponent(
-      location,
-    )}`
+    // Try Google Calendar first
+    const googleUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}&location=${location}`
 
-    // Create ICS file content
+    // Create ICS file as fallback
     const icsContent = `BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//Kaspa Events//Kaspa Birthday//EN
+PRODID:-//Kaspa Events//Ticket System//EN
 BEGIN:VEVENT
-UID:kaspa-birthday-${ticketData.orderId}@kaspaevents.xyz
+UID:kaspa-birthday-2025@kaspaevents.xyz
 DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").split(".")[0]}Z
 DTSTART:${startDate}
 DTEND:${endDate}
-SUMMARY:${title}
-DESCRIPTION:${description.replace(/\n/g, "\\n")}
-LOCATION:${location}
+SUMMARY:Kaspa 4th Birthday Celebration
+DESCRIPTION:Kaspa 4th Birthday Celebration - 3 days of workshops, presentations, and networking
+LOCATION:Kaspa Community Center, Liverpool, NY
 STATUS:CONFIRMED
 END:VEVENT
 END:VCALENDAR`
 
-    // Try to open Google Calendar, fallback to ICS download
-    try {
-      window.open(googleCalendarUrl, "_blank")
-    } catch (error) {
-      // Fallback: download ICS file
-      const blob = new Blob([icsContent], { type: "text/calendar" })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `kaspa-birthday-${ticketData.orderId}.ics`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    }
+    // Try to open Google Calendar
+    const newWindow = window.open(googleUrl, "_blank")
+
+    // If popup blocked or user prefers download, offer ICS file
+    setTimeout(() => {
+      if (!newWindow || newWindow.closed) {
+        const blob = new Blob([icsContent], { type: "text/calendar" })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = "kaspa-birthday-celebration.ics"
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }
+    }, 1000)
+  }
+
+  const formatCooldownTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
+    return `${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`
+  }
+
+  const getTicketTypeDisplay = (type: string) => {
+    return type
+      .replace("-", " ")
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ")
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 dark:from-slate-900 dark:to-slate-800">
-        <Card className="max-w-md w-full">
-          <CardContent className="pt-8 text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-500" />
-            <h2 className="text-xl font-bold mb-2">Loading your ticket...</h2>
-            <p className="text-muted-foreground">Please wait while we fetch your ticket information</p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     )
   }
 
-  if (error || !ticketData) {
+  if (!ticketData) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 dark:from-slate-900 dark:to-slate-800">
-        <Card className="max-w-md w-full">
-          <CardContent className="pt-8 text-center">
-            <AlertCircle className="w-8 h-8 mx-auto mb-4 text-red-500" />
-            <h2 className="text-xl font-bold mb-2">Ticket Not Found</h2>
-            <p className="text-muted-foreground mb-4">{error}</p>
-            <Button onClick={() => (window.location.href = "/tickets")}>Back to Tickets</Button>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6 text-center">
+            <p className="text-red-600">Ticket not found. Please check your order ID.</p>
           </CardContent>
         </Card>
       </div>
     )
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "finished":
-        return "bg-green-500"
-      case "partially_paid":
-        return "bg-yellow-500"
-      case "waiting":
-        return "bg-blue-500"
-      default:
-        return "bg-gray-500"
-    }
-  }
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "finished":
-        return "Payment Confirmed"
-      case "partially_paid":
-        return "Partially Paid"
-      case "waiting":
-        return "Awaiting Payment"
-      default:
-        return "Processing"
-    }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="max-w-md w-full"
-      >
-        <Card className="border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-purple-500/5">
-          <CardHeader className="text-center">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-              className="mx-auto mb-4 w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center"
-            >
-              {ticketData.paymentStatus === "finished" ? (
-                <CheckCircle className="w-8 h-8 text-white" />
-              ) : (
-                <Clock className="w-8 h-8 text-white" />
-              )}
-            </motion.div>
-            <CardTitle className={cn("text-2xl", spaceGrotesk.className)}>
-              {ticketData.paymentStatus === "finished" ? "Payment Successful!" : "Payment Processing"}
-            </CardTitle>
-            <Badge className={cn("mt-2", getStatusColor(ticketData.paymentStatus))}>
-              {getStatusText(ticketData.paymentStatus)}
-            </Badge>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="text-center">
-              <p className="text-muted-foreground mb-4">
-                {ticketData.paymentStatus === "finished"
-                  ? "Your ticket has been confirmed and sent to your email."
-                  : "Your payment is being processed. You will receive your ticket once payment is confirmed."}
-              </p>
-            </div>
-
-            {/* Ticket Preview */}
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-lg border-2 border-dashed border-blue-300 dark:border-blue-700">
-              <div className="text-center space-y-4">
-                {ticketData.qrCode ? (
-                  <motion.img
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.3 }}
-                    src={ticketData.qrCode}
-                    alt="Ticket QR Code"
-                    className="w-32 h-32 mx-auto border rounded-lg"
-                  />
-                ) : (
-                  <div className="w-32 h-32 mx-auto border rounded-lg bg-muted flex items-center justify-center">
-                    <Clock className="w-8 h-8 text-muted-foreground" />
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4">
+      <div className="container mx-auto max-w-2xl">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+          <Card className="mb-8">
+            <CardHeader className="text-center">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+                className="mx-auto mb-4"
+              >
+                <CheckCircle className="h-16 w-16 text-green-500" />
+              </motion.div>
+              <CardTitle className="text-2xl font-bold text-green-600">Payment Successful!</CardTitle>
+              <p className="text-muted-foreground">Your tickets have been confirmed and are ready to use.</p>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Ticket Information */}
+              <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-6 rounded-lg">
+                <h3 className="text-lg font-semibold mb-4">Ticket Details</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-blue-100 text-sm">Order ID</p>
+                    <p className="font-mono text-sm">{ticketData.orderId}</p>
                   </div>
-                )}
-                <div>
-                  <h3 className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
-                    Kaspa's 4th Birthday
-                  </h3>
-                  <p className="text-sm text-muted-foreground">November 7-9, 2025</p>
-                  <p className="text-sm text-muted-foreground">Liverpool, NY</p>
-                </div>
-                <div className="border-t pt-4">
-                  <p className="font-medium">{ticketData.customerName}</p>
-                  <p className="text-sm text-muted-foreground">{ticketData.ticketName}</p>
-                  <p className="text-sm text-muted-foreground">Quantity: {ticketData.quantity}</p>
-                  <p className="text-xs text-muted-foreground">Order: {ticketData.orderId}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Payment Details */}
-            <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 p-4 rounded-lg border border-blue-500/20">
-              <h4 className="font-semibold mb-3">Payment Details</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span>Total Amount:</span>
-                  <span className="font-medium">${ticketData.totalAmount}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Payment Currency:</span>
-                  <span className="font-medium">{ticketData.payCurrency?.toUpperCase()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Status:</span>
-                  <Badge variant="outline" className={cn("text-xs", getStatusColor(ticketData.paymentStatus))}>
-                    {getStatusText(ticketData.paymentStatus)}
-                  </Badge>
+                  <div>
+                    <p className="text-blue-100 text-sm">Ticket Type</p>
+                    <p className="font-semibold">{getTicketTypeDisplay(ticketData.ticketType)}</p>
+                  </div>
+                  <div>
+                    <p className="text-blue-100 text-sm">Quantity</p>
+                    <p className="font-semibold">{ticketData.quantity}</p>
+                  </div>
+                  <div>
+                    <p className="text-blue-100 text-sm">Total Paid</p>
+                    <p className="font-semibold">${ticketData.totalAmount}</p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {ticketData.paymentStatus === "finished" && (
+              {/* Event Information */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-semibold mb-2">Event Information</h4>
+                <div className="space-y-1 text-sm text-gray-600">
+                  <p>
+                    <strong>Event:</strong> Kaspa 4th Birthday Celebration
+                  </p>
+                  <p>
+                    <strong>Date:</strong> November 7-9, 2025
+                  </p>
+                  <p>
+                    <strong>Location:</strong> Kaspa Community Center, Liverpool, NY
+                  </p>
+                  <p>
+                    <strong>Time:</strong> 9:00 AM - 6:00 PM daily
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
               <div className="space-y-3">
-                <Button
-                  className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-                  onClick={handleDownloadTicket}
-                >
-                  <Download className="w-4 h-4 mr-2" />
+                <h4 className="font-semibold">Ticket Actions</h4>
+
+                <Button onClick={handleDownloadTicket} className="w-full bg-transparent" variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
                   Download Ticket
                 </Button>
+
                 <Button
+                  onClick={handleEmailTicket}
                   className="w-full bg-transparent"
                   variant="outline"
-                  onClick={handleEmailTicket}
                   disabled={emailCooldown > 0 || emailSending}
                 >
-                  <Mail className="w-4 w-4 mr-2" />
-                  {emailSending
-                    ? "Sending..."
-                    : emailCooldown > 0
-                      ? `Email Ticket (${Math.floor(emailCooldown / 60)}:${(emailCooldown % 60)
-                          .toString()
-                          .padStart(2, "0")})`
-                      : "Email Ticket"}
+                  {emailSending ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                      Sending...
+                    </>
+                  ) : emailCooldown > 0 ? (
+                    <>
+                      <Clock className="h-4 w-4 mr-2" />
+                      Email Ticket ({formatCooldownTime(emailCooldown)})
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="h-4 w-4 mr-2" />
+                      Email Ticket
+                    </>
+                  )}
                 </Button>
-                <Button className="w-full bg-transparent" variant="outline" onClick={handleAddToCalendar}>
-                  <Calendar className="w-4 h-4 mr-2" />
+
+                <Button onClick={handleAddToCalendar} className="w-full bg-transparent" variant="outline">
+                  <Calendar className="h-4 w-4 mr-2" />
                   Add to Calendar
                 </Button>
               </div>
-            )}
 
-            <div className="text-center text-sm text-muted-foreground">
-              {ticketData.paymentStatus === "finished" ? (
-                <>
-                  <p>Present this QR code at the event entrance.</p>
-                  <p>Keep this ticket safe - it cannot be replaced if lost.</p>
-                </>
-              ) : (
-                <>
-                  <p>This page will automatically update when payment is confirmed.</p>
-                  <p>Payments typically confirm within 10-30 minutes.</p>
-                </>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+              {/* Important Notes */}
+              <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                <h4 className="font-semibold text-yellow-800 mb-2">Important Notes</h4>
+                <ul className="text-sm text-yellow-700 space-y-1">
+                  <li>• Your ticket has been sent to {ticketData.customerEmail}</li>
+                  <li>• Present your digital ticket (QR code) at the event entrance</li>
+                  <li>• Bring a valid ID for verification</li>
+                  <li>• Tickets are non-refundable but transferable</li>
+                  <li>• Contact tickets@kaspaevents.xyz for questions</li>
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
     </div>
   )
 }

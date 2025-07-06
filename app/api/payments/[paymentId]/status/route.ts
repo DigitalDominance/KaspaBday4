@@ -1,134 +1,152 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
+import { connectToDatabase } from "@/lib/mongodb"
 import { NOWPaymentsAPI } from "@/lib/nowpayments"
-import { KaspaBirthdayTicketsModel } from "@/lib/models/KaspaBirthdayTickets"
 import { EmailService } from "@/lib/email"
-import { generateTicketQR } from "@/lib/qr-generator"
+import { generateQRCodeDataURL } from "@/lib/qr-generator"
 
-export async function GET(request: Request, { params }: { params: { paymentId: string } }) {
+export async function GET(request: NextRequest, { params }: { params: { paymentId: string } }) {
   try {
-    const { paymentId } = params
+    const paymentId = params.paymentId
 
     if (!paymentId) {
       return NextResponse.json({ error: "Payment ID is required" }, { status: 400 })
     }
 
-    console.log(`🔍 Checking status for payment: ${paymentId}`)
+    const { db } = await connectToDatabase()
 
-    const nowPayments = new NOWPaymentsAPI()
-
-    // Method 1: Try to get payment from list (more reliable)
+    // Get payment status from NOWPayments using list endpoint (more reliable)
     let paymentData = null
+
     try {
-      console.log("📋 Fetching from payments list...")
-      const listResponse = await nowPayments.getPaymentsList({
+      // Try list endpoint first (more reliable)
+      const listResponse = await NOWPaymentsAPI.getPaymentsList({
         limit: 100,
         sortBy: "created_at",
         orderBy: "desc",
       })
 
-      if (listResponse.data && Array.isArray(listResponse.data)) {
-        paymentData = listResponse.data.find((p: any) => p.payment_id.toString() === paymentId.toString())
-        if (paymentData) {
-          console.log(`✅ Found payment in list: ${paymentData.payment_status}`)
+      if (listResponse.success && listResponse.data) {
+        paymentData = listResponse.data.find((payment: any) => payment.payment_id.toString() === paymentId)
+      }
+
+      // Fallback to individual payment endpoint
+      if (!paymentData) {
+        const individualResponse = await NOWPaymentsAPI.getPaymentStatus(paymentId)
+        if (individualResponse.success) {
+          paymentData = individualResponse.data
         }
       }
-    } catch (listError) {
-      console.log("⚠️ List method failed, trying individual endpoint...")
+    } catch (error) {
+      console.error("Error fetching payment status from NOWPayments:", error)
     }
 
-    // Method 2: Fallback to individual payment endpoint
-    if (!paymentData) {
-      try {
-        console.log("🔍 Fetching individual payment...")
-        paymentData = await nowPayments.getPaymentStatus(paymentId)
-        if (paymentData && !paymentData.error) {
-          console.log(`✅ Found individual payment: ${paymentData.payment_status}`)
-        }
-      } catch (individualError) {
-        console.error("❌ Individual payment fetch failed:", individualError)
-      }
-    }
+    // Find ticket in database
+    const ticket = await db.collection("kaspa_birthday_tickets").findOne({
+      paymentId: paymentId,
+    })
 
-    if (!paymentData || paymentData.error) {
-      console.log("❌ Payment not found in NOWPayments")
-      return NextResponse.json({ error: "Payment not found" }, { status: 404 })
-    }
-
-    // Get current ticket from database
-    const currentTicket = await KaspaBirthdayTicketsModel.findByPaymentId(paymentId)
-    if (!currentTicket) {
-      console.log("❌ Ticket not found in database")
+    if (!ticket) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 })
     }
 
-    const newStatus = paymentData.payment_status
-    const currentStatus = currentTicket.paymentStatus
+    // Update ticket status if payment data is available
+    if (paymentData && paymentData.payment_status !== ticket.paymentStatus) {
+      console.log(`Updating payment status from ${ticket.paymentStatus} to ${paymentData.payment_status}`)
 
-    console.log(`📊 Status comparison: ${currentStatus} → ${newStatus}`)
+      await db.collection("kaspa_birthday_tickets").updateOne(
+        { paymentId: paymentId },
+        {
+          $set: {
+            paymentStatus: paymentData.payment_status,
+            actuallyPaid: paymentData.actually_paid,
+            payinHash: paymentData.payin_hash,
+            updatedAt: new Date(),
+          },
+        },
+      )
 
-    // Update database if status changed
-    if (newStatus !== currentStatus) {
-      console.log(`🔄 Updating payment status: ${currentStatus} → ${newStatus}`)
+      // If payment is finished and no QR code exists, generate ticket
+      if (paymentData.payment_status === "finished" && !ticket.qrCode) {
+        console.log("Payment finished, generating ticket and sending email...")
 
-      const updateData: any = {
-        paymentStatus: newStatus,
-        actuallyPaid: paymentData.actually_paid,
-      }
+        // Generate QR code
+        const qrData = JSON.stringify({
+          orderId: ticket.orderId,
+          customerName: ticket.customerName,
+          ticketType: ticket.ticketName,
+          quantity: ticket.quantity,
+          event: "Kaspa 4th Birthday Celebration",
+          date: "November 7-9, 2025",
+          venue: "Kaspa Community Center, Liverpool, NY",
+          verified: true,
+          timestamp: Date.now(),
+        })
 
-      await KaspaBirthdayTicketsModel.updatePaymentStatus(paymentId, updateData)
+        const qrCodeDataUrl = await generateQRCodeDataURL(qrData)
 
-      // If payment is now finished, generate and send ticket
-      if (newStatus === "finished" && currentStatus !== "finished") {
-        console.log("🎫 Payment completed! Generating ticket...")
+        // Update ticket with QR code
+        await db.collection("kaspa_birthday_tickets").updateOne(
+          { paymentId: paymentId },
+          {
+            $set: {
+              qrCode: qrCodeDataUrl,
+              ticketGenerated: true,
+              ticketGeneratedAt: new Date(),
+            },
+          },
+        )
 
-        try {
-          // Generate QR code
-          const qrData = generateTicketQR({
-            orderId: currentTicket.orderId,
-            customerName: currentTicket.customerName,
-            customerEmail: currentTicket.customerEmail,
-            ticketType: currentTicket.ticketType,
-            quantity: currentTicket.quantity,
-            eventDate: "November 7-9, 2025",
-          })
+        // Send ticket email
+        const emailSent = await EmailService.sendTicketEmail({
+          ticket: { ...ticket, qrCode: qrCodeDataUrl },
+          qrCodeDataUrl,
+        })
 
-          // Update ticket with QR code
-          await KaspaBirthdayTicketsModel.updatePaymentStatus(paymentId, {
-            qrCode: qrData.qrCodeDataUrl,
-            ticketData: qrData.ticketInfo,
-          })
-
-          // Send ticket email
-          const emailSent = await EmailService.sendTicketEmail({
-            ticket: { ...currentTicket, paymentStatus: newStatus },
-            qrCodeDataUrl: qrData.qrCodeDataUrl,
-          })
-
-          if (emailSent) {
-            await KaspaBirthdayTicketsModel.updatePaymentStatus(paymentId, {
-              emailSent: true,
-            })
-            console.log("✅ Ticket email sent successfully")
-          } else {
-            console.log("⚠️ Failed to send ticket email")
-          }
-        } catch (ticketError) {
-          console.error("❌ Error generating/sending ticket:", ticketError)
+        if (emailSent) {
+          console.log("✅ Ticket email sent successfully")
+          await db.collection("kaspa_birthday_tickets").updateOne(
+            { paymentId: paymentId },
+            {
+              $set: {
+                emailSent: true,
+                emailSentAt: new Date(),
+              },
+            },
+          )
         }
+
+        // Update ticket object for response
+        ticket.qrCode = qrCodeDataUrl
+        ticket.ticketGenerated = true
+        ticket.emailSent = emailSent
       }
+
+      // Update ticket object for response
+      ticket.paymentStatus = paymentData.payment_status
+      ticket.actuallyPaid = paymentData.actually_paid
     }
 
-    // Return updated status
     return NextResponse.json({
-      paymentId,
-      paymentStatus: newStatus,
-      actuallyPaid: paymentData.actually_paid,
-      payAmount: paymentData.pay_amount,
-      payCurrency: paymentData.pay_currency,
-      updatedAt: new Date().toISOString(),
+      success: true,
+      data: {
+        paymentId: ticket.paymentId,
+        orderId: ticket.orderId,
+        paymentStatus: ticket.paymentStatus,
+        customerName: ticket.customerName,
+        customerEmail: ticket.customerEmail,
+        ticketName: ticket.ticketName,
+        quantity: ticket.quantity,
+        totalAmount: ticket.totalAmount,
+        payCurrency: ticket.payCurrency,
+        qrCode: ticket.qrCode,
+        ticketGenerated: ticket.ticketGenerated || false,
+        emailSent: ticket.emailSent || false,
+        createdAt: ticket.createdAt,
+        updatedAt: ticket.updatedAt,
+      },
     })
   } catch (error) {
-    console.error("❌ Payment status check error:", error)
-    return NextResponse.json({ error: "Failed to check payment status" }, { status: 500 })
+    console.error("Error fetching payment status:", error)
+    return NextResponse.json({ error: "Failed to fetch payment status" }, { status: 500 })
   }
 }

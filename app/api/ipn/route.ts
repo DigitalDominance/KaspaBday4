@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { KaspaBirthdayTicketsModel } from "@/models/KaspaBirthdayTicketsModel"
+import { KaspaBirthdayTicketsModel } from "@/lib/models/KaspaBirthdayTickets"
 import { sendPaymentConfirmationEmail, sendTicketEmail } from "@/lib/email-service"
 
 export async function POST(request: Request) {
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
         let ticketNumbers = order.ticketNumbers
         if (!ticketNumbers || ticketNumbers.length === 0) {
           ticketNumbers = Array.from(
-            { length: order.ticketQuantity },
+            { length: order.quantity },
             (_, i) => `KAS-${Date.now()}-${String(i + 1).padStart(3, "0")}`,
           )
         }
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
           orderId: order.orderId,
           customerName: order.customerName,
           customerEmail: order.customerEmail,
-          ticketQuantity: order.ticketQuantity,
+          ticketQuantity: order.quantity,
           totalAmount: Number.parseFloat(order.totalAmount),
           currency: order.currency,
           paymentId: order.paymentId,

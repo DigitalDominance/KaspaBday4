@@ -65,7 +65,7 @@ export async function POST(request: Request) {
       ticketName: ticketInfo.name,
       quantity,
       pricePerTicket: ticketInfo.price,
-      totalAmount,
+      totalAmount: totalAmount.toString(),
       currency,
       paymentId: payment.payment_id,
       paymentStatus: payment.payment_status,

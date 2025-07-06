@@ -89,9 +89,9 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
       case "waiting":
         return {
           icon: <Clock className="h-5 w-5" />,
-          color: "bg-gradient-to-r from-blue-500 to-purple-600",
+          color: "bg-gradient-to-r from-blue-500 to-purple-500",
           textColor: "text-blue-300",
-          bgGradient: "bg-gradient-to-br from-blue-500/10 to-purple-500/10",
+          bgColor: "bg-gradient-to-br from-blue-900/20 to-purple-900/20",
           borderColor: "border-blue-500/30",
           title: "Waiting for Payment",
           description: "Please send the exact amount to the address below",
@@ -102,9 +102,9 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
       case "sending":
         return {
           icon: <Loader2 className="h-5 w-5 animate-spin" />,
-          color: "bg-gradient-to-r from-purple-500 to-pink-600",
+          color: "bg-gradient-to-r from-purple-500 to-pink-500",
           textColor: "text-purple-300",
-          bgGradient: "bg-gradient-to-br from-purple-500/10 to-pink-500/10",
+          bgColor: "bg-gradient-to-br from-purple-900/20 to-pink-900/20",
           borderColor: "border-purple-500/30",
           title: "Confirming Payment",
           description: "Your payment has been detected and is being confirmed on the blockchain",
@@ -112,9 +112,9 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
       case "finished":
         return {
           icon: <CheckCircle className="h-5 w-5" />,
-          color: "bg-gradient-to-r from-green-500 to-blue-600",
+          color: "bg-gradient-to-r from-green-500 to-emerald-500",
           textColor: "text-green-300",
-          bgGradient: "bg-gradient-to-br from-green-500/10 to-blue-500/10",
+          bgColor: "bg-gradient-to-br from-green-900/20 to-emerald-900/20",
           borderColor: "border-green-500/30",
           title: "Payment Completed",
           description: "Your ticket has been generated and sent to your email",
@@ -124,9 +124,9 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
       case "expired":
         return {
           icon: <AlertCircle className="h-5 w-5" />,
-          color: "bg-gradient-to-r from-red-500 to-pink-600",
+          color: "bg-gradient-to-r from-red-500 to-pink-500",
           textColor: "text-red-300",
-          bgGradient: "bg-gradient-to-br from-red-500/10 to-pink-500/10",
+          bgColor: "bg-gradient-to-br from-red-900/20 to-pink-900/20",
           borderColor: "border-red-500/30",
           title: "Payment Failed",
           description: "There was an issue with your payment. Please try again.",
@@ -134,9 +134,9 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
       default:
         return {
           icon: <Clock className="h-5 w-5" />,
-          color: "bg-gradient-to-r from-blue-500 to-purple-600",
+          color: "bg-gradient-to-r from-blue-500 to-purple-500",
           textColor: "text-blue-300",
-          bgGradient: "bg-gradient-to-br from-blue-500/10 to-purple-500/10",
+          bgColor: "bg-gradient-to-br from-blue-900/20 to-purple-900/20",
           borderColor: "border-blue-500/30",
           title: "Waiting for Payment",
           description: "Please send the exact amount to the address below",
@@ -146,10 +146,10 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
 
   if (loading) {
     return (
-      <Card className="border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-purple-500/5">
+      <Card className="border-blue-500/20">
         <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin mr-2 text-blue-400" />
-          <span className="text-foreground">Loading payment status...</span>
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          <span>Loading payment status...</span>
         </CardContent>
       </Card>
     )
@@ -157,9 +157,9 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
 
   if (error) {
     return (
-      <Card className="border-red-500/20 bg-gradient-to-br from-red-500/5 to-pink-500/5">
+      <Card className="border-red-500/20 bg-red-50/50">
         <CardContent className="py-6">
-          <div className="flex items-center gap-2 text-red-400">
+          <div className="flex items-center gap-2 text-red-700">
             <AlertCircle className="h-5 w-5" />
             <span>{error}</span>
           </div>
@@ -170,9 +170,9 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
 
   if (!paymentData) {
     return (
-      <Card className="border-gray-500/20 bg-gradient-to-br from-gray-500/5 to-slate-500/5">
+      <Card className="border-gray-500/20">
         <CardContent className="py-6">
-          <div className="text-center text-muted-foreground">No payment data available</div>
+          <div className="text-center text-gray-600">No payment data available</div>
         </CardContent>
       </Card>
     )
@@ -181,12 +181,12 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
   const statusInfo = getStatusInfo(paymentData.paymentStatus)
 
   return (
-    <Card className={cn("border-2", statusInfo.borderColor, statusInfo.bgGradient)}>
+    <Card className={cn("border-2", statusInfo.borderColor, statusInfo.bgColor)}>
       <CardHeader>
         <CardTitle className="flex items-center gap-3">
-          <div className={cn("p-2 rounded-full text-white", statusInfo.color)}>{statusInfo.icon}</div>
+          <div className={cn("p-2 rounded-full", statusInfo.color, "text-white")}>{statusInfo.icon}</div>
           <div>
-            <div className="text-lg font-semibold text-foreground">{statusInfo.title}</div>
+            <div className={cn("text-lg font-semibold", statusInfo.textColor)}>{statusInfo.title}</div>
             <div className="text-sm text-muted-foreground">{statusInfo.description}</div>
           </div>
         </CardTitle>
@@ -197,20 +197,18 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
         {paymentData.payAddress && paymentData.payAmount && (
           <div className="space-y-4">
             <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 p-4 rounded-lg border border-slate-700/50 backdrop-blur-sm">
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div>
-                  <label className="text-sm font-medium text-slate-300 mb-2 block">Send exactly this amount:</label>
-                  <div className="flex items-center gap-2">
-                    <div className="bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 px-4 py-3 rounded-lg flex-1">
-                      <code className="text-lg font-mono text-white font-bold">
-                        {paymentData.payAmount} {paymentData.payCurrency?.toUpperCase()}
-                      </code>
-                    </div>
+                  <label className="text-sm font-medium text-slate-300">Send exactly this amount:</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="bg-gradient-to-r from-slate-700 to-slate-800 text-white px-3 py-2 rounded text-lg font-mono border border-slate-600">
+                      {paymentData.payAmount} {paymentData.payCurrency?.toUpperCase()}
+                    </code>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => copyToClipboard(paymentData.payAmount?.toString() || "")}
-                      className="bg-slate-800/50 border-slate-600 hover:bg-slate-700/50 text-white"
+                      className="border-slate-600 hover:bg-slate-700"
                     >
                       <Copy className="h-4 w-4" />
                     </Button>
@@ -218,18 +216,16 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-slate-300 mb-2 block">To this address:</label>
-                  <div className="flex items-center gap-2">
-                    <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 px-4 py-3 rounded-lg flex-1">
-                      <code className="text-sm font-mono text-white break-all leading-relaxed">
-                        {paymentData.payAddress}
-                      </code>
-                    </div>
+                  <label className="text-sm font-medium text-slate-300">To this address:</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="bg-gradient-to-r from-slate-700 to-slate-800 text-white px-3 py-2 rounded text-sm font-mono break-all flex-1 border border-slate-600">
+                      {paymentData.payAddress}
+                    </code>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => copyToClipboard(paymentData.payAddress || "")}
-                      className="bg-slate-800/50 border-slate-600 hover:bg-slate-700/50 text-white"
+                      className="border-slate-600 hover:bg-slate-700"
                     >
                       {copied ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
                     </Button>
@@ -240,10 +236,10 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
 
             {/* Payment Progress */}
             {paymentData.actuallyPaid && paymentData.actuallyPaid > 0 && (
-              <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 p-4 rounded-lg border border-blue-500/30">
-                <div className="flex items-center justify-between mb-2">
+              <div className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 p-4 rounded-lg border border-blue-500/30 backdrop-blur-sm">
+                <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-blue-300">Amount Received:</span>
-                  <span className="text-sm font-mono text-white">
+                  <span className="text-sm font-mono text-blue-100">
                     {paymentData.actuallyPaid} {paymentData.payCurrency?.toUpperCase()}
                   </span>
                 </div>
@@ -251,7 +247,7 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
                   <div className="mt-2">
                     <div className="w-full bg-slate-700 rounded-full h-2">
                       <div
-                        className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all duration-300"
+                        className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
                         style={{
                           width: `${Math.min((paymentData.actuallyPaid / paymentData.payAmount) * 100, 100)}%`,
                         }}
@@ -266,7 +262,7 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
 
         {/* Status Badge */}
         <div className="flex items-center justify-between">
-          <Badge variant="outline" className={cn("capitalize border-current", statusInfo.textColor)}>
+          <Badge variant="outline" className={cn("capitalize", statusInfo.textColor)}>
             {paymentData.paymentStatus.replace("_", " ")}
           </Badge>
           {paymentData.updatedAt && (
@@ -283,7 +279,7 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
               variant="outline"
               size="sm"
               onClick={() => window.open(`https://blockchair.com/search?q=${paymentData.payAddress}`, "_blank")}
-              className="flex-1 bg-slate-800/50 border-slate-600 hover:bg-slate-700/50 text-white"
+              className="flex-1"
             >
               <ExternalLink className="h-4 w-4 mr-2" />
               View on Explorer
@@ -292,12 +288,12 @@ export function PaymentStatusTracker({ paymentId, onStatusChange }: PaymentStatu
         )}
 
         {paymentData.paymentStatus === "finished" && (
-          <div className="bg-gradient-to-br from-green-500/10 to-blue-500/10 p-4 rounded-lg border border-green-500/30">
-            <div className="flex items-center gap-2 text-green-400">
+          <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 p-4 rounded-lg border border-green-500/30 backdrop-blur-sm">
+            <div className="flex items-center gap-2 text-green-300">
               <CheckCircle className="h-5 w-5" />
               <span className="font-medium">Payment Successful!</span>
             </div>
-            <p className="text-sm text-green-300 mt-1">
+            <p className="text-sm text-green-200 mt-1">
               Your ticket has been generated and sent to your email address.
             </p>
           </div>

@@ -1,0 +1,22 @@
+{
+  "name": "Kaspa's 4th Birthday Celebration",
+  "short_name": "Kaspa Birthday",
+  "description": "Join us for Kaspa's 4th Birthday Celebration - A weekend of blockchain innovation, community, and celebration in Central New York.",
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#3b82f6",
+  "background_color": "#0f172a",
+  "display": "standalone",
+  "start_url": "/",
+  "orientation": "portrait"
+}

@@ -355,7 +355,7 @@ export function TicketPurchaseModal({
                       ) : (
                         <>
                           <CreditCard className="h-4 w-4 mr-2" />
-                          Pay with {selectedCurrency?.toUpperCase()}
+                          Pay with {selectedCurrency ? selectedCurrency.toUpperCase() : "Crypto"}
                         </>
                       )}
                     </Button>
@@ -389,7 +389,7 @@ export function TicketPurchaseModal({
                     <p className="text-muted-foreground mb-4">
                       Send exactly{" "}
                       <strong>
-                        {paymentInfo.payAmount} {paymentInfo.payCurrency.toUpperCase()}
+                        {paymentInfo.payAmount} {paymentInfo.payCurrency ? paymentInfo.payCurrency.toUpperCase() : ""}
                       </strong>{" "}
                       to the address below
                     </p>
@@ -418,7 +418,7 @@ export function TicketPurchaseModal({
                     <Label className="text-sm font-medium mb-2 block">Amount to Send</Label>
                     <div className="flex items-center justify-between">
                       <span className="text-2xl font-bold">
-                        {paymentInfo.payAmount} {paymentInfo.payCurrency.toUpperCase()}
+                        {paymentInfo.payAmount} {paymentInfo.payCurrency ? paymentInfo.payCurrency.toUpperCase() : ""}
                       </span>
                       <Button
                         size="sm"

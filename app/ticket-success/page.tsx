@@ -18,6 +18,8 @@ export default function TicketSuccessPage() {
   const [ticketData, setTicketData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [emailCooldown, setEmailCooldown] = useState(0)
+  const [emailSending, setEmailSending] = useState(false)
 
   useEffect(() => {
     if (orderId) {
@@ -27,6 +29,14 @@ export default function TicketSuccessPage() {
       return () => clearInterval(interval)
     }
   }, [orderId])
+
+  // Email cooldown timer
+  useEffect(() => {
+    if (emailCooldown > 0) {
+      const timer = setTimeout(() => setEmailCooldown(emailCooldown - 1), 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [emailCooldown])
 
   const fetchTicketData = async () => {
     try {
@@ -43,6 +53,134 @@ export default function TicketSuccessPage() {
       setError("Failed to load ticket data")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDownloadTicket = () => {
+    if (!ticketData) return
+
+    // Create ticket data for download
+    const ticketInfo = {
+      event: "Kaspa's 4th Birthday Celebration",
+      date: "November 7-9, 2025",
+      venue: "Kaspa Community Center, Liverpool, NY",
+      customerName: ticketData.customerName,
+      ticketType: ticketData.ticketName,
+      quantity: ticketData.quantity,
+      orderId: ticketData.orderId,
+      qrCode: ticketData.qrCode,
+    }
+
+    // Create downloadable content
+    const content = `
+KASPA'S 4TH BIRTHDAY CELEBRATION
+================================
+
+Event: ${ticketInfo.event}
+Date: ${ticketInfo.date}
+Venue: ${ticketInfo.venue}
+
+TICKET HOLDER: ${ticketInfo.customerName}
+TICKET TYPE: ${ticketInfo.ticketType}
+QUANTITY: ${ticketInfo.quantity}
+ORDER ID: ${ticketInfo.orderId}
+
+INSTRUCTIONS:
+- Present this ticket and QR code at event entrance
+- Arrive 15 minutes early for check-in
+- Bring valid photo ID for verification
+- Keep this ticket safe - cannot be replaced if lost
+
+QR Code Data: ${ticketInfo.qrCode}
+
+Questions? Contact: tickets@kaspaevents.xyz
+    `
+
+    // Create and download file
+    const blob = new Blob([content], { type: "text/plain" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `kaspa-birthday-ticket-${ticketData.orderId}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  const handleEmailTicket = async () => {
+    if (!ticketData || emailCooldown > 0) return
+
+    setEmailSending(true)
+    try {
+      const response = await fetch("/api/tickets/resend-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          orderId: ticketData.orderId,
+        }),
+      })
+
+      if (response.ok) {
+        setEmailCooldown(3600) // 1 hour cooldown
+        alert("Ticket email sent successfully!")
+      } else {
+        alert("Failed to send email. Please try again later.")
+      }
+    } catch (error) {
+      console.error("Failed to send email:", error)
+      alert("Failed to send email. Please try again later.")
+    } finally {
+      setEmailSending(false)
+    }
+  }
+
+  const handleAddToCalendar = () => {
+    const startDate = "20251107T090000Z" // November 7, 2025, 9:00 AM UTC
+    const endDate = "20251109T180000Z" // November 9, 2025, 6:00 PM UTC
+    const title = "Kaspa's 4th Birthday Celebration"
+    const description = `${ticketData.ticketName} - ${ticketData.quantity} ticket(s)\nOrder: ${ticketData.orderId}\n\nKaspa Community Center\n4225 Long Branch Rd, Liverpool, NY 13088`
+    const location = "Kaspa Community Center, 4225 Long Branch Rd, Liverpool, NY 13088"
+
+    // Create Google Calendar URL
+    const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
+      title,
+    )}&dates=${startDate}/${endDate}&details=${encodeURIComponent(description)}&location=${encodeURIComponent(
+      location,
+    )}`
+
+    // Create ICS file content
+    const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Kaspa Events//Kaspa Birthday//EN
+BEGIN:VEVENT
+UID:kaspa-birthday-${ticketData.orderId}@kaspaevents.xyz
+DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").split(".")[0]}Z
+DTSTART:${startDate}
+DTEND:${endDate}
+SUMMARY:${title}
+DESCRIPTION:${description.replace(/\n/g, "\\n")}
+LOCATION:${location}
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR`
+
+    // Try to open Google Calendar, fallback to ICS download
+    try {
+      window.open(googleCalendarUrl, "_blank")
+    } catch (error) {
+      // Fallback: download ICS file
+      const blob = new Blob([icsContent], { type: "text/calendar" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `kaspa-birthday-${ticketData.orderId}.ics`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
     }
   }
 
@@ -197,16 +335,27 @@ export default function TicketSuccessPage() {
               <div className="space-y-3">
                 <Button
                   className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-                  disabled
+                  onClick={handleDownloadTicket}
                 >
                   <Download className="w-4 h-4 mr-2" />
                   Download Ticket
                 </Button>
-                <Button className="w-full bg-transparent" variant="outline" disabled>
+                <Button
+                  className="w-full bg-transparent"
+                  variant="outline"
+                  onClick={handleEmailTicket}
+                  disabled={emailCooldown > 0 || emailSending}
+                >
                   <Mail className="w-4 w-4 mr-2" />
-                  Email Ticket
+                  {emailSending
+                    ? "Sending..."
+                    : emailCooldown > 0
+                      ? `Email Ticket (${Math.floor(emailCooldown / 60)}:${(emailCooldown % 60)
+                          .toString()
+                          .padStart(2, "0")})`
+                      : "Email Ticket"}
                 </Button>
-                <Button className="w-full bg-transparent" variant="outline" disabled>
+                <Button className="w-full bg-transparent" variant="outline" onClick={handleAddToCalendar}>
                   <Calendar className="w-4 h-4 mr-2" />
                   Add to Calendar
                 </Button>

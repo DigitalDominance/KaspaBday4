@@ -1,10 +1,9 @@
 import type { KaspaBirthdayTicket } from "@/lib/models/KaspaBirthdayTickets"
 
-// Email service configuration - using Resend's default domain
+// Email service configuration - using custom domain
 const RESEND_API_KEY = process.env.RESEND_API_KEY
-// Using Resend's default onboarding domain - no custom domain needed!
-const FROM_EMAIL = "onboarding@resend.dev"
-const REPLY_TO_EMAIL = "zalesskiandrew@gmail.com" // Your email for replies
+const FROM_EMAIL = "tickets@kaspaevents.xyz"
+const REPLY_TO_EMAIL = "tickets@kaspaevents.xyz"
 
 interface EmailTicketData {
   ticket: KaspaBirthdayTicket
@@ -127,16 +126,6 @@ export class EmailService {
         .header p {
             font-size: 16px;
             opacity: 0.9;
-            position: relative;
-            z-index: 1;
-        }
-        
-        .kaspa-logo {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            margin: 0 auto 20px;
-            border: 3px solid rgba(255,255,255,0.3);
             position: relative;
             z-index: 1;
         }
@@ -370,9 +359,6 @@ export class EmailService {
 <body>
     <div class="email-container">
         <div class="header">
-            <div style="width: 60px; height: 60px; background: white; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; border: 3px solid rgba(255,255,255,0.3); position: relative; z-index: 1;">
-                <span style="font-size: 24px; font-weight: bold; color: #667eea;">K</span>
-            </div>
             <h1>🎉 Your Ticket is Ready!</h1>
             <p>Kaspa's 4th Birthday Celebration</p>
         </div>
@@ -626,25 +612,11 @@ BlockDAG • Parallel Blocks • Instant Finality
             color: #666; 
             font-size: 14px; 
         }
-        .logo-placeholder {
-            width: 50px;
-            height: 50px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border-radius: 50%;
-            margin: 0 auto 15px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 20px;
-        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo-placeholder">K</div>
             <h1 style="color: #667eea; margin: 0;">💰 Payment Received!</h1>
             <p style="color: #666; margin: 10px 0;">Your Kaspa Birthday ticket is being processed</p>
         </div>

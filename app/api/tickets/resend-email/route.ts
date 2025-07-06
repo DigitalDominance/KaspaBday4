@@ -1,73 +1,50 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { connectToDatabase } from "@/lib/mongodb"
-import { sendTicketEmail } from "@/lib/email"
+import { NextResponse } from "next/server"
+import { KaspaBirthdayTicketsModel } from "@/lib/models/KaspaBirthdayTickets"
+import { EmailService } from "@/lib/email"
+import { generateTicketQR } from "@/lib/qr-generator"
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const { orderId } = await request.json()
 
     if (!orderId) {
-      return NextResponse.json({ success: false, error: "Order ID is required" }, { status: 400 })
+      return NextResponse.json({ error: "Order ID is required" }, { status: 400 })
     }
-
-    const { db } = await connectToDatabase()
 
     // Find the ticket
-    const ticket = await db.collection("kaspa_birthday_tickets").findOne({ orderId })
+    const ticket = await KaspaBirthdayTicketsModel.findByOrderId(orderId)
 
     if (!ticket) {
-      return NextResponse.json({ success: false, error: "Ticket not found" }, { status: 404 })
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 })
     }
 
-    // Check if payment is finished
     if (ticket.paymentStatus !== "finished") {
-      return NextResponse.json({ success: false, error: "Payment not completed" }, { status: 400 })
+      return NextResponse.json({ error: "Payment not completed" }, { status: 400 })
     }
 
-    // Check cooldown (1 hour = 3600 seconds)
-    const lastEmailSent = ticket.lastEmailSent ? new Date(ticket.lastEmailSent) : null
-    const now = new Date()
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000)
-
-    if (lastEmailSent && lastEmailSent > oneHourAgo) {
-      const remainingTime = Math.ceil((lastEmailSent.getTime() + 60 * 60 * 1000 - now.getTime()) / 1000)
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Email cooldown active",
-          remainingTime,
-        },
-        { status: 429 },
-      )
-    }
-
-    // Send the email
-    const emailSent = await sendTicketEmail({
+    // Generate QR code
+    const qrData = generateTicketQR({
       orderId: ticket.orderId,
       customerName: ticket.customerName,
       customerEmail: ticket.customerEmail,
       ticketType: ticket.ticketType,
       quantity: ticket.quantity,
-      totalAmount: ticket.totalAmount,
+      eventDate: "November 7-9, 2025",
     })
 
-    if (!emailSent) {
-      return NextResponse.json({ success: false, error: "Failed to send email" }, { status: 500 })
+    // Send email
+    const emailSent = await EmailService.sendTicketEmail({
+      ticket,
+      qrCodeDataUrl: qrData.qrCodeDataUrl,
+    })
+
+    if (emailSent) {
+      return NextResponse.json({ success: true, message: "Email sent successfully" })
+    } else {
+      return NextResponse.json({ error: "Failed to send email" }, { status: 500 })
     }
-
-    // Update last email sent timestamp
-    await db.collection("kaspa_birthday_tickets").updateOne(
-      { orderId },
-      {
-        $set: {
-          lastEmailSent: now,
-        },
-      },
-    )
-
-    return NextResponse.json({ success: true, message: "Email sent successfully" })
   } catch (error) {
-    console.error("Error resending email:", error)
-    return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 })
+    console.error("Resend email error:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

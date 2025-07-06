@@ -24,6 +24,7 @@ export interface KaspaBirthdayTicket {
   updatedAt: Date
   paidAt?: Date
   emailSent?: boolean
+  paymentConfirmationEmailSent?: boolean
   notes?: string
 }
 
@@ -44,6 +45,8 @@ export class KaspaBirthdayTicketsModel {
       ...ticketData,
       createdAt: now,
       updatedAt: now,
+      emailSent: false,
+      paymentConfirmationEmailSent: false,
     }
 
     const result = await collection.insertOne(ticket)
@@ -109,5 +112,32 @@ export class KaspaBirthdayTicketsModel {
       .toArray()
 
     return stats
+  }
+
+  static async getEmailStats() {
+    const collection = await this.getCollection()
+
+    const emailStats = await collection
+      .aggregate([
+        {
+          $group: {
+            _id: null,
+            totalTickets: { $sum: 1 },
+            emailsSent: { $sum: { $cond: ["$emailSent", 1, 0] } },
+            paymentConfirmationsSent: { $sum: { $cond: ["$paymentConfirmationEmailSent", 1, 0] } },
+            finishedPayments: { $sum: { $cond: [{ $eq: ["$paymentStatus", "finished"] }, 1, 0] } },
+          },
+        },
+      ])
+      .toArray()
+
+    return (
+      emailStats[0] || {
+        totalTickets: 0,
+        emailsSent: 0,
+        paymentConfirmationsSent: 0,
+        finishedPayments: 0,
+      }
+    )
   }
 }

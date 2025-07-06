@@ -96,9 +96,15 @@ export function TicketPurchaseModal({
     try {
       const response = await fetch("/api/nowpayments/currencies")
       const data = await response.json()
-      if (data.success && data.currencies) {
-        setCurrencies(data.currencies)
-        setFilteredCurrencies(data.currencies)
+      if (data.currencies) {
+        // Sort currencies to put KAS first
+        const sortedCurrencies = data.currencies.sort((a: string, b: string) => {
+          if (a.toLowerCase() === "kas") return -1
+          if (b.toLowerCase() === "kas") return 1
+          return a.localeCompare(b)
+        })
+        setCurrencies(sortedCurrencies)
+        setFilteredCurrencies(sortedCurrencies)
       }
     } catch (error) {
       console.error("Failed to fetch currencies:", error)
@@ -375,13 +381,13 @@ export function TicketPurchaseModal({
                   <div className="space-y-2">
                     <Label>Available Cryptocurrencies ({filteredCurrencies.length})</Label>
                     <div className="max-h-48 overflow-y-auto border rounded-lg p-2 bg-background/50">
-                      <div className="grid grid-cols-1 gap-2">
+                      <div className="grid grid-cols-2 gap-2">
                         {filteredCurrencies.map((currency) => (
                           <button
                             key={currency}
                             onClick={() => setSelectedCurrency(currency)}
                             className={cn(
-                              "p-3 rounded-lg border text-left transition-all duration-200 hover:scale-105 flex items-center gap-3",
+                              "p-3 rounded-lg border text-left transition-all duration-200 hover:scale-105",
                               selectedCurrency === currency
                                 ? "border-purple-500 bg-gradient-to-r from-purple-500/10 to-pink-500/10"
                                 : "border-border hover:border-purple-500/50",

@@ -274,9 +274,11 @@ export function Sponsors() {
                         <h4 className="font-semibold mb-2">Investment</h4>
                         <p className="text-lg font-bold text-primary">{tier.investment}</p>
                       </div>
-                      <Button className={`w-full ${spaceGrotesk.className}`} size="lg">
-                        <Mail className="h-4 w-4 mr-2" />
-                        Become a Sponsor
+                      <Button className={`w-full ${spaceGrotesk.className}`} size="lg" asChild>
+                        <a href="mailto:tickets@kaspaevents.xyz">
+                          <Mail className="h-4 w-4 mr-2" />
+                          Become a Sponsor
+                        </a>
                       </Button>
                     </div>
                   </div>
@@ -306,17 +308,23 @@ export function Sponsors() {
                 <Button
                   size="lg"
                   className={`bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700 text-white ${spaceGrotesk.className}`}
+                  asChild
                 >
-                  <Mail className="h-4 w-4 mr-2" />
-                  Contact Sponsor Team
+                  <a href="mailto:tickets@kaspaevents.xyz">
+                    <Mail className="h-4 w-4 mr-2" />
+                    Contact Sponsor Team
+                  </a>
                 </Button>
                 <Button
                   size="lg"
                   variant="outline"
                   className={`border-blue-500/20 bg-transparent ${spaceGrotesk.className}`}
+                  asChild
                 >
-                  <Handshake className="h-4 w-4 mr-2" />
-                  Download Sponsor Kit
+                  <a href="mailto:tickets@kaspaevents.xyz">
+                    <Handshake className="h-4 w-4 mr-2" />
+                    Download Sponsor Kit
+                  </a>
                 </Button>
               </div>
               <div className="mt-6 text-sm text-muted-foreground">

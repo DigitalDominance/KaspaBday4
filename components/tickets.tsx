@@ -5,10 +5,10 @@ import { motion } from "framer-motion"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Check, Star, Crown, Zap, Gift, AlertCircle } from "lucide-react"
+import { Check, Star, Crown, Zap, Gift, AlertCircle } from 'lucide-react'
 import { ElegantShape } from "@/components/ui/elegant-shape"
 import { TicketPurchaseModal } from "@/components/ticket-purchase-modal"
-import { Space_Grotesk } from "next/font/google"
+import { Space_Grotesk } from 'next/font/google'
 import { cn } from "@/lib/utils"
 
 const spaceGrotesk = Space_Grotesk({
@@ -438,7 +438,7 @@ export function Tickets() {
               </div>
               <div className="mt-8 pt-4 border-t border-border/50">
                 <p className="text-sm text-muted-foreground">
-                  Questions? Contact us at events@kaspafunding.com • Early bird pricing ends October 15th, 2025
+                  Questions? Contact us at tickets@kaspaevents.xyz • Early bird pricing ends October 15th, 2025
                 </p>
               </div>
             </CardContent>

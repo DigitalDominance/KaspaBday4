@@ -6,7 +6,17 @@ import { motion } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Star, MapPin, Car, ExternalLink, GlassWaterIcon as Waterfall, Building, TreePine, Camera } from "lucide-react"
+import {
+  Star,
+  MapPin,
+  Car,
+  ExternalLink,
+  GlassWaterIcon as Waterfall,
+  Building,
+  TreePine,
+  Camera,
+  Mail,
+} from "lucide-react"
 import { ElegantShape } from "@/components/ui/elegant-shape"
 import { Space_Grotesk } from "next/font/google"
 import { cn } from "@/lib/utils"
@@ -135,13 +145,6 @@ const attractions = [
 ]
 
 export function Accommodations() {
-  const scrollToEventDetails = () => {
-    const element = document.querySelector("#event-details")
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth" })
-    }
-  }
-
   return (
     <section
       id="accommodations"
@@ -443,13 +446,16 @@ export function Accommodations() {
                 </div>
                 <div className="mt-6">
                   <Button
-                    onClick={scrollToEventDetails}
                     className={cn(
                       "bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white",
                       spaceGrotesk.className,
                     )}
+                    asChild
                   >
-                    Student Registration
+                    <a href="mailto:tickets@kaspaevents.xyz?subject=Student Registration Inquiry">
+                      <Mail className="h-4 w-4 mr-2" />
+                      Student Registration
+                    </a>
                   </Button>
                 </div>
               </CardContent>

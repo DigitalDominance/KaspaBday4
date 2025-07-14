@@ -214,8 +214,8 @@ export function Footer() {
                     <div className="space-y-2 text-sm">
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Mail className="h-4 w-4" />
-                        <a href="mailto:events@kaspafunding.com" className="hover:text-foreground transition-colors">
-                          events@kaspafunding.com
+                        <a href="mailto:tickets@kaspaevents.xyz" className="hover:text-foreground transition-colors">
+                          tickets@kaspaevents.xyz
                         </a>
                       </div>
                       <div className="flex items-center gap-2 text-muted-foreground">
